@@ -89,24 +89,26 @@ Click any screenshot to see it full size.
 
 PinchTube was majority written and coded by Claude Code (Opus 5.5). While I am technical and am able to code myself, this is a project I really wanted to create and coding everything myself would have taken me far longer than I have time to spare at the moment. I understand some may have an issue with AI being used and I ask that if you don't like the project, please don't use it. I am however very open to feedback and suggestions, and am keen to see PinchTube succeed!
 
-I would like to mention however that since the code is written by Claude and I'm certainly no security auditor, I do not recommend hosting PinchTube publicly. Please host it and enjoy it on your local LAN or use a VPN like Wireguard/Tailscale if you wish to access it remotely.
+I would like to mention however that since the code is written by Claude and I'm no security auditor, **I do not recommend hosting PinchTube publicly**. Please host it on your local LAN and use a VPN like Wireguard/Tailscale if you wish to access it remotely.
 
 Thank you!
 
 ## Features
 
-- **A familiar home page** — Continue watching, Recently added, Rediscover and a row per
-  channel, all reorderable and switchable per user.
+- **YouTube as it should be** - No ads, no algorithms predicting your likes, no social media
+- rubbish or arguments in the comments, just your own YouTube server as you like it.
+- **A familiar and customisable home page** — Continue watching, Recently added, Rediscover and a row per
+  channel, all reorderable and switchable per user. Dark and Light modes.
 - **Reads your library in place** — channels, titles, descriptions, dates and artwork from
   Kodi-style `.nfo` and image files, plus chapters and subtitles; the media folder is
   mounted read-only.
-- **Stays up to date by itself** — new videos appear within seconds, with a scheduled
+- **Grabs videos fast** — new videos appear within seconds, with a scheduled
   scan as a safety net.
-- **Plays anything, anywhere** — direct play of the original file, or on-demand transcoding
-  from 2160p down to 360p plus an audio-only mode.
-- **Hardware transcoding** — AMD and Intel (VAAPI, Quick Sync) and NVIDIA (NVENC), tested
-  automatically at start-up with a fallback to the CPU.
-- **Playlists and a play queue** — drag to reorder, loop, shuffle, per-person quality, and
+- **All the qualities** — direct play of the original file, or on-demand transcoding
+  from 2160p down to 360p plus an audio-only mode for saving mobile data.
+- **Hardware transcoding** — AMD (VAAPI), Intel (Quick Sync) and NVIDIA (NVENC), tested
+  automatically at start-up with a fallback to CPU software transcoding.
+- **Playlists and play queue** — drag to reorder, loop, shuffle, per-person quality, and
   optional sharing with the other users.
 - **Multiple users** — everyone gets their own watch history, queue, playlists and settings;
   administrators choose which channels each person can see.
