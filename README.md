@@ -19,6 +19,7 @@
 </p>
 
 <p align="center">
+  <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
   <a href="#requirements">Requirements</a> ·
   <a href="#installation">Installation</a> ·
@@ -35,14 +36,54 @@ proper quality menu that transcodes on the fly, so the same library plays smooth
 desktop or on a phone on mobile data. It runs as a single Docker container on
 your own server, with accounts for everyone in the house.
 
-<!--
-  Screenshots: add images to docs/assets/ and uncomment this block.
+## Screenshots
 
-<p align="center">
-  <img alt="Home page" src="docs/assets/screenshot-home.png" width="49%">
-  <img alt="Watch page" src="docs/assets/screenshot-watch.png" width="49%">
-</p>
--->
+Click any screenshot to see it full size.
+
+<table>
+  <tr>
+    <th width="50%"><a href="docs/assets/screenshots/home.jpg">Home</a></th>
+    <th width="50%"><a href="docs/assets/screenshots/home-dark.jpg">Home (dark theme)</a></th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/home.jpg"><img alt="Home page" src="docs/assets/screenshots/home.jpg" width="380"></a></td>
+    <td><a href="docs/assets/screenshots/home-dark.jpg"><img alt="Home page in the dark theme" src="docs/assets/screenshots/home-dark.jpg" width="380"></a></td>
+  </tr>
+  <tr>
+    <th><a href="docs/assets/screenshots/watch.jpg">Watch page</a></th>
+    <th><a href="docs/assets/screenshots/theater.jpg">Theater mode</a></th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/watch.jpg"><img alt="Watch page" src="docs/assets/screenshots/watch.jpg" width="380"></a></td>
+    <td><a href="docs/assets/screenshots/theater.jpg"><img alt="Watch page in theater mode" src="docs/assets/screenshots/theater.jpg" width="380"></a></td>
+  </tr>
+  <tr>
+    <th><a href="docs/assets/screenshots/channels.jpg">Channels</a></th>
+    <th><a href="docs/assets/screenshots/playlist.jpg">Playlists</a></th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/channels.jpg"><img alt="Channels page" src="docs/assets/screenshots/channels.jpg" width="380"></a></td>
+    <td><a href="docs/assets/screenshots/playlist.jpg"><img alt="A playlist and its settings" src="docs/assets/screenshots/playlist.jpg" width="380"></a></td>
+  </tr>
+  <tr>
+    <th><a href="docs/assets/screenshots/queue.jpg">Play queue</a></th>
+    <th></th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/queue.jpg"><img alt="Play queue" src="docs/assets/screenshots/queue.jpg" width="380"></a></td>
+    <td></td>
+  </tr>
+  <tr>
+    <th colspan="2">On your phone</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <a href="docs/assets/screenshots/mobile-channel.jpg"><img alt="A channel page on a phone" src="docs/assets/screenshots/mobile-channel.jpg" width="250"></a>
+      &nbsp;&nbsp;
+      <a href="docs/assets/screenshots/mobile-queue.jpg"><img alt="The play queue on a phone" src="docs/assets/screenshots/mobile-queue.jpg" width="250"></a>
+    </td>
+  </tr>
+</table>
 
 ## Features
 
