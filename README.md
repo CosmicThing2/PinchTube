@@ -213,5 +213,5 @@ available.
 
 ---
 
-<sub>PinchTube is an independent project. It is not affiliated with, endorsed by or
+<sub>PinchTube is a free and independent project. It is not affiliated with, endorsed by or
 connected to YouTube, Google or Pinchflat.</sub>
