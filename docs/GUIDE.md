@@ -276,8 +276,8 @@ Without any GPU, `libx264` is used; a modern desktop CPU handles a couple of sim
 ## Security
 
 PinchTube is meant to be reached over a private network — a LAN, or a VPN such as WireGuard
-or Tailscale. **Exposing it directly to the internet is not recommended.** It is built to
-hold up if that happens anyway:
+or Tailscale. **Exposing it directly to the internet is not recommended.** However, that
+also doesn't mean it compromises on security:
 
 - Every `/api/` route requires a session unless it is explicitly public (sign-in, status,
   health). The check uses the route Fastify actually matched, not the raw URL.
@@ -296,7 +296,7 @@ hold up if that happens anyway:
   videos in a shared playlist whose owner turned strict access permissions off.
 - The media folder is mounted read-only and the app never runs as root.
 
-If you do expose it, put it behind HTTPS and turn on two-factor sign-in for every account.
+If you must expose it, put it behind HTTPS and turn on two-factor sign-in for every account.
 
 ### Behind a reverse proxy
 
