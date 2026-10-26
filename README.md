@@ -88,7 +88,8 @@ your own server, with accounts for everyone in the house.
 > management client which is able to do so. See the [Guide](docs/GUIDE.md) for
 > more information.
 
-1. First follow the instructions detailed on [Pinchflat](https://github.com/kieraneglin/pinchflat) or [Pinchflat-NGX](https://github.com/TheBadFella/pinchflat-ngx) to setup and install Pinchflat. Make a note of where you set your<br> `/downloads` volume as PinchTube will need read access to the same directory. For this example, assuming you created `/YouTube` on your server to store your videos, you would set the following in your Pinchflat docker-compose.yaml:
+1. First follow the instructions detailed on [Pinchflat](https://github.com/kieraneglin/pinchflat) or [Pinchflat-NGX](https://github.com/TheBadFella/pinchflat-ngx) to setup and install Pinchflat.
+Make a note of where you set your `/downloads` volume as PinchTube will need read access to the same directory. For this example, assuming you created `/YouTube` on your server to store your videos, you would set the following in your Pinchflat docker-compose.yaml:
 ```bash
 volumes:
       - ./config:/config
