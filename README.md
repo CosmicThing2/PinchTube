@@ -82,7 +82,7 @@ your own server, with accounts for everyone in the house.
 
 ## Installation
 
-### Set up Pinchflat/Pinchflat-NGX *(optional but recommended)*
+### Set up Pinchflat/Pinchflat-NGX
 > Pinchflat is not required, but without it you'll need to set up all the
 > paths, permissions and directories yourself or have another media
 > management client which is able to do so. See the [Guide](docs/GUIDE.md) for
@@ -149,7 +149,9 @@ cp .env.example .env
 Open `.env` and set `MEDIA_PATH` to Pinchflat's media folder. Everything else has a
 sensible default — the port (`8150`), time zone and user IDs are there if you need them.
 
-### 3. Turn on hardware transcoding *(optional but recommended)*
+### 3. Turn on hardware transcoding
+> This isn't required but is recommended. Without it Pinchtube will transcode on the CPU which will be significantly slower.
+> See [Hardware acceleration](docs/GUIDE.md#hardware-acceleration) for the details.
 
 Uncomment the block for your GPU at the bottom of `docker-compose.yml`. For AMD and Intel,
 also set `RENDER_GID` in `.env` to the output of:
@@ -157,9 +159,6 @@ also set `RENDER_GID` in `.env` to the output of:
 ```bash
 stat -c '%g' /dev/dri/renderD128
 ```
-
-Skip this step and PinchTube transcodes on the CPU instead. See
-[Hardware acceleration](docs/GUIDE.md#hardware-acceleration) for the details.
 
 ### 4. Start it
 
