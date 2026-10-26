@@ -117,7 +117,7 @@ Embed Metadata: On
 Redownload Delay (days): 1
 Create NFO data: On
 Download Series Images: On
-Sponsorblock: I'd recommend marking rather than removing, PinchTube is able to recognise marked segments, but up to you
+Sponsorblock: I'd recommend marking rather than removing, PinchTube can recognise marked segments
 ```
 3. Next add your sources, these are channels or playlists you wish to download. Follow the normal process in Pinchflat to add these. If you have channel(s) that upload frequently or you want to add many channels, I'd also recommend setting up Fast Indexing but this requires a YouTube [API key](https://github.com/kieraneglin/pinchflat/wiki/Generating-a-YouTube-API-key).
 
