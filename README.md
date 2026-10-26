@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>A self-hosted streaming site for your own video library.</strong>
+  <strong>A self-hosted media server for your video library.</strong>
 </p>
 
 <p align="center">
