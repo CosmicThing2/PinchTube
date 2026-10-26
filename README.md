@@ -25,8 +25,6 @@
   <a href="docs/GUIDE.md">Full guide</a>
 </p>
 
----
-
 ## About
 
 PinchTube is a self-hosted web app that turns a folder of videos into a familiar,
