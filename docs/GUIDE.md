@@ -12,7 +12,6 @@ transcoding with a real quality menu.
 It runs as a single Docker container. It is designed for a private network — see
 [Security](#security) before putting it anywhere else.
 
----
 
 ## What it does
 
@@ -40,7 +39,6 @@ It runs as a single Docker container. It is designed for a private network — s
   authenticator app, signed HTTP-only session cookies and every API route behind
   authentication.
 
----
 
 ## Quick start
 
@@ -72,7 +70,6 @@ It runs as a single Docker container. It is designed for a private network — s
    for a large library it can take a few minutes. Later scans only look at folders whose
    contents changed.
 
----
 
 ## Expected folder layout
 
@@ -113,7 +110,6 @@ downloads (`.part`, `.temp.mp4` and similar) are ignored.
 `2026-07-10`. It is what "release date" sorting uses. "Recently added" uses the file's
 modification time instead, which is when the downloader wrote it.
 
----
 
 ## Configuration
 
@@ -161,7 +157,6 @@ unprivileged and execs straight through.
 which is a tidy place for changes only your machine needs (a GPU block, extra volumes) so
 that `docker-compose.yml` itself can be updated freely. That file is in `.gitignore`.
 
----
 
 ## Users
 
@@ -176,6 +171,7 @@ that `docker-compose.yml` itself can be updated freely. That file is in `.gitign
   off **All channels** for a user to pick the channels they may see instead; everything
   else — videos, thumbnails, streams, search, shared playlists — is hidden from them.
 
+
 ### Two-factor sign-in
 
 Optional, per user, under **Settings → Two-factor sign-in**. Scan the QR code with any
@@ -187,7 +183,6 @@ who has lost both phone and codes.
 The QR code is drawn by the server itself; the secret is never sent to a third-party
 service.
 
----
 
 ## Playlists and the queue
 
@@ -212,7 +207,6 @@ finishes (configurable under Settings → Playback).
 Data saver always wins over a playlist's or the queue's own quality, since its whole point is
 a ceiling on data use.
 
----
 
 ## Transcoding
 
@@ -271,7 +265,6 @@ build has no NVENC support, point `FFMPEG_PATH` / `FFPROBE_PATH` at an ffmpeg th
 Without any GPU, `libx264` is used; a modern desktop CPU handles a couple of simultaneous
 1080p transcodes comfortably, and **Original** quality needs no transcoding at all.
 
----
 
 ## Security
 
@@ -312,7 +305,6 @@ media.example.internal {
 Serving over HTTPS also enables the service worker and full PWA install. Over plain HTTP
 the app still works and iOS will still add it to the home screen in fullscreen mode.
 
----
 
 ## Upgrading
 
@@ -320,7 +312,6 @@ Pull or copy the new version, then `docker compose up -d --build`. Database chan
 applied automatically on start. When upgrading from a single-user version, the existing
 account becomes the administrator and keeps its watch history, queue and settings.
 
----
 
 ## Development
 
@@ -349,7 +340,6 @@ cd server && npm run typecheck
 cd web && npm run typecheck
 ```
 
----
 
 ## How it is put together
 
@@ -388,7 +378,6 @@ web/src
 State lives in SQLite at `/config/ytmedia.db`. Video IDs are a hash of the path relative to
 the media root, so watch progress survives a file being removed and downloaded again.
 
----
 
 ## Keyboard shortcuts
 
@@ -408,7 +397,6 @@ On a phone: tap to show controls, double-tap the left or right half to skip, dra
 progress bar to scrub; in fullscreen, swipe up and down on the right for volume and on the
 left for brightness.
 
----
 
 ## Troubleshooting
 
