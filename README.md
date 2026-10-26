@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Your own private YouTube, for the videos you have already downloaded.</strong>
+  <strong>A self-hosted streaming site for your own video library.</strong>
 </p>
 
 <p align="center">
@@ -15,6 +15,7 @@
   <img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white">
   <img alt="Hardware transcoding" src="https://img.shields.io/badge/GPU-AMD%20%7C%20Intel%20%7C%20NVIDIA-555">
   <img alt="Mobile friendly" src="https://img.shields.io/badge/mobile-friendly-ff3d5e">
+  <a href="LICENSE"><img alt="Licence: GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-blue"></a>
 </p>
 
 <p align="center">
@@ -28,11 +29,10 @@
 
 ## About
 
-PinchTube is a self-hosted web app that turns a folder of downloaded YouTube videos into a
-site that looks and feels like YouTube. Point it at the library that
-[Pinchflat](https://github.com/kieraneglin/pinchflat) builds for you and it reads the
-channels, titles, descriptions and artwork straight from the files, with nothing copied or
-changed. You get a home page of rows, channel pages, search, playlists and a player with a
+PinchTube is a self-hosted web app that turns a folder of videos into a familiar,
+easy-to-browse streaming site. Point it at a library organised by
+[Pinchflat](https://github.com/kieraneglin/pinchflat) and it reads the channels, titles,
+descriptions and artwork straight from the files, with nothing copied or changed. You get a home page of rows, channel pages, search, playlists and a player with a
 proper quality menu that transcodes on the fly, so the same library plays smoothly on a
 desktop or on a phone on mobile data. It runs as a single Docker container on
 your own server, with accounts for everyone in the house.
@@ -51,9 +51,9 @@ your own server, with accounts for everyone in the house.
 - **A familiar home page** — Continue watching, Recently added, Rediscover and a row per
   channel, all reorderable and switchable per user.
 - **Reads your library in place** — channels, titles, descriptions, dates and artwork from
-  the downloader's `.nfo` and image files, plus chapters and subtitles; the media folder is
+  Kodi-style `.nfo` and image files, plus chapters and subtitles; the media folder is
   mounted read-only.
-- **Stays up to date by itself** — new downloads appear within seconds, with a scheduled
+- **Stays up to date by itself** — new videos appear within seconds, with a scheduled
   scan as a safety net.
 - **Plays anything, anywhere** — direct play of the original file, or on-demand transcoding
   from 2160p down to 360p plus an audio-only mode.
@@ -72,13 +72,13 @@ your own server, with accounts for everyone in the house.
 
 ## Requirements
 
-| | |
+| Component | Requirement |
 | --- | --- |
 | **Host** | A Linux machine running [Docker Engine](https://docs.docker.com/engine/install/) with the Compose plugin (`docker compose`) |
 | **CPU** | x86-64. A few cores is plenty; transcoding without a GPU is the heaviest job |
 | **Memory** | 1 GB free is comfortable |
 | **Disk** | Space for the transcode cache — 20 GB by default, adjustable in settings |
-| **Library** | Videos downloaded by [Pinchflat](https://github.com/kieraneglin/pinchflat) (or another downloader that writes Kodi-style `.nfo` files) |
+| **Library** | A video library organised by [Pinchflat](https://github.com/kieraneglin/pinchflat), or any folder of videos with Kodi-style `.nfo` files |
 | **GPU** *(optional)* | AMD or Intel with `/dev/dri`, or NVIDIA with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
 | **Browser** | Any current version of Chrome, Edge, Firefox or Safari, on desktop or mobile |
 
@@ -86,12 +86,12 @@ your own server, with accounts for everyone in the house.
 
 ### 1. Set up Pinchflat
 
-PinchTube plays what Pinchflat downloads, so set that up first.
+PinchTube plays the library Pinchflat manages, so set that up first.
 
 <!-- TODO: Pinchflat setup — install, media profile settings (NFO files, thumbnails,
      series images, output path template), adding channels. -->
 
-When you are done, the download folder should look like one of these:
+When you are done, the media folder should look like one of these:
 
 ```
 Channel Name/                     Channel Name/
@@ -116,7 +116,7 @@ cd PinchTube
 cp .env.example .env
 ```
 
-Open `.env` and set `MEDIA_PATH` to Pinchflat's download folder. Everything else has a
+Open `.env` and set `MEDIA_PATH` to Pinchflat's media folder. Everything else has a
 sensible default — the port (`8150`), time zone and user IDs are there if you need them.
 
 ### 4. Turn on hardware transcoding *(optional)*
@@ -174,6 +174,13 @@ automatically.
 The **[full guide](docs/GUIDE.md)** covers everything else: configuration, users and channel
 access, two-factor sign-in, playlists, transcoding and GPUs, running behind a reverse proxy,
 keyboard shortcuts and troubleshooting.
+
+## Licence
+
+PinchTube is free software, released under the
+[GNU General Public License v3.0](LICENSE). You may use, study, share and modify it; if you
+distribute a modified version, it must be under the same licence, with its source code
+available.
 
 ---
 
