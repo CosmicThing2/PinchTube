@@ -67,11 +67,11 @@ Click any screenshot to see it full size.
   </tr>
   <tr>
     <th><a href="docs/assets/screenshots/queue.jpg">Play queue</a></th>
-    <th></th>
+    <th><a href="docs/assets/screenshots/settings.jpg">Settings</a></th>
   </tr>
   <tr>
     <td><a href="docs/assets/screenshots/queue.jpg"><img alt="Play queue" src="docs/assets/screenshots/queue.jpg" width="380"></a></td>
-    <td></td>
+    <td><a href="docs/assets/screenshots/settings.jpg"><img alt="Settings page" src="docs/assets/screenshots/settings.jpg" width="380"></a></td>
   </tr>
   <tr>
     <th colspan="2">On your phone</th>
@@ -79,7 +79,7 @@ Click any screenshot to see it full size.
   <tr>
     <td colspan="2" align="center">
       <a href="docs/assets/screenshots/mobile-channel.jpg"><img alt="A channel page on a phone" src="docs/assets/screenshots/mobile-channel.jpg" width="250"></a>
-      &nbsp;&nbsp;
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       <a href="docs/assets/screenshots/mobile-queue.jpg"><img alt="The play queue on a phone" src="docs/assets/screenshots/mobile-queue.jpg" width="250"></a>
     </td>
   </tr>
