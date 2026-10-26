@@ -96,7 +96,7 @@ Thank you!
 ## Features
 
 - **YouTube as it should be** - No ads, no algorithms predicting your likes, no social media
-- rubbish or arguments in the comments, just your own YouTube server as you like it.
+  rubbish or arguments in the comments, just your own YouTube server as you like it.
 - **A familiar and customisable home page** — Continue watching, Recently added, Rediscover and a row per
   channel, all reorderable and switchable per user. Dark and Light modes.
 - **Reads your library in place** — channels, titles, descriptions, dates and artwork from
