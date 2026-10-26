@@ -85,6 +85,14 @@ Click any screenshot to see it full size.
   </tr>
 </table>
 
+## AI Disclosure
+
+PinchTube was majority written and coded by Claude Code (Opus 5.5). While I am technical and am able to code myself, this is a project I really wanted to create and coding everything myself would have taken me far longer than I have time to spare at the moment. I understand some may have an issue with AI being used and I ask that if you don't like the project, please don't use it. I am however very open to feedback and suggestions, and am keen to see PinchTube succeed!
+
+I would like to mention however that since the code is written by Claude and I'm certainly no security auditor, I do not recommend hosting PinchTube publicly. Please host it and enjoy it on your local LAN or use a VPN like Wireguard/Tailscale if you wish to access it remotely.
+
+Thank you!
+
 ## Features
 
 - **A familiar home page** — Continue watching, Recently added, Rediscover and a row per
