@@ -91,8 +91,8 @@ your own server, with accounts for everyone in the house.
 1. First follow the instructions detailed on [Pinchflat](https://github.com/kieraneglin/pinchflat) or [Pinchflat-NGX](https://github.com/TheBadFella/pinchflat-ngx) to setup and install Pinchflat. Make a note of where you set your `/downloads` volume as PinchTube will need read access to the same directory. For this example, assuming you created `/YouTube` on your server to store your videos, you would set the following in your Pinchflat docker-compose.yaml:
 ```bash
 volumes:
-      - ./config:/config
-      - /YouTube:/downloads
+    - ./config:/config
+    - /YouTube:/downloads
 ```
 2. Now create a media profile for the content (channels or playlists) you wish to download. For the media to be recognised by PinchTube, it should be organised in either of the following formats:
 
