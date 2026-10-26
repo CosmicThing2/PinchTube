@@ -82,7 +82,7 @@ your own server, with accounts for everyone in the house.
 
 ## Installation
 
-### Set up Pinchflat/Pinchflat-NGX (Optional but recommended)
+### Set up Pinchflat/Pinchflat-NGX *(optional but recommended)*
 > Pinchflat is not required, but without it you'll need to set up all the
 > paths, permissions and directories yourself or have another media
 > management client which is able to do so. See the [Guide](docs/GUIDE.md) for
@@ -149,7 +149,7 @@ cp .env.example .env
 Open `.env` and set `MEDIA_PATH` to Pinchflat's media folder. Everything else has a
 sensible default — the port (`8150`), time zone and user IDs are there if you need them.
 
-### 3. Turn on hardware transcoding *(optional)*
+### 3. Turn on hardware transcoding *(optional but recommended)*
 
 Uncomment the block for your GPU at the bottom of `docker-compose.yml`. For AMD and Intel,
 also set `RENDER_GID` in `.env` to the output of:
