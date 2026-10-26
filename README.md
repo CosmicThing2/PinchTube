@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>A self-hosted media server for your video library.</strong>
+  <strong>A self-hosted media server for your Pinchflat video library.</strong>
 </p>
 
 <p align="center">
