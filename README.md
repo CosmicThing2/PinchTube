@@ -77,7 +77,7 @@ your own server, with accounts for everyone in the house.
 | **Memory** | 1 GB free is comfortable |
 | **Disk** | Space for the transcode cache — 20 GB by default, adjustable in settings |
 | **Library** | A video library organised by [Pinchflat](https://github.com/kieraneglin/pinchflat) or [Pinchflat-NGX](https://github.com/TheBadFella/pinchflat-ngx), or any folder of videos with Kodi-style `.nfo` files |
-| **GPU** *(optional but recommended)* | AMD or Intel with `/dev/dri`, or NVIDIA with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
+| **GPU/APU** *(optional but recommended)* | AMD or Intel with `/dev/dri`, or NVIDIA with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
 | **Browser** | Any current version of Chrome, Edge, Firefox or Safari, on desktop or mobile |
 
 ## Installation
