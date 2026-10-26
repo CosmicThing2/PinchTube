@@ -97,26 +97,26 @@ Thank you!
 
 - **YouTube as it should be** - No ads, no algorithms predicting your likes, no social media
   rubbish or arguments in the comments, just your own YouTube server as you like it.
-- **A familiar and customisable home page** — Continue watching, Recently added, Rediscover and a row per
+- **A familiar and customisable home page** - Continue watching, Recently added, Rediscover and a row per
   channel, all reorderable and switchable per user. Dark and Light modes.
-- **Reads your library in place** — channels, titles, descriptions, dates and artwork from
+- **Reads your library in place** - channels, titles, descriptions, dates and artwork from
   Kodi-style `.nfo` and image files, plus chapters and subtitles; the media folder is
   mounted read-only.
-- **Grabs videos fast** — new videos appear within seconds, with a scheduled
+- **Grabs videos fast** - new videos appear within seconds, with a scheduled
   scan as a safety net.
-- **All the qualities** — direct play of the original file, or on-demand transcoding
+- **All the qualities** - direct play of the original file, or on-demand transcoding
   from 2160p down to 360p plus an audio-only mode for saving mobile data.
-- **Hardware transcoding** — AMD (VAAPI), Intel (Quick Sync) and NVIDIA (NVENC), tested
+- **Hardware transcoding** - AMD (VAAPI), Intel (Quick Sync) and NVIDIA (NVENC), tested
   automatically at start-up with a fallback to CPU software transcoding.
-- **Playlists and play queue** — drag to reorder, loop, shuffle, per-person quality, and
+- **Playlists and play queue** - drag to reorder, loop, shuffle, per-person quality, and
   optional sharing with the other users.
-- **Multiple users** — everyone gets their own watch history, queue, playlists and settings;
+- **Multiple users** - everyone gets their own watch history, queue, playlists and settings;
   administrators choose which channels each person can see.
-- **Built for phones** — bottom tab bar, touch gestures, a data saver mode with its own
+- **Built for phones** - bottom tab bar, touch gestures, a data saver mode with its own
   quality, and installable to the home screen.
-- **A proper player** — resume where you left off, chapters, SponsorBlock segments with a
+- **A proper player** - resume where you left off, chapters, SponsorBlock segments with a
   skip button, theater mode, keyboard shortcuts and media controls on the lock screen.
-- **Private and secure** — optional two-factor sign-in with any authenticator app, scrypt
+- **Private and secure** - optional two-factor sign-in with any authenticator app, scrypt
   password hashing, sign-in throttling and strict security headers.
 
 ## Requirements
