@@ -30,7 +30,7 @@
 
 PinchTube is a self-hosted web app that turns a folder of videos into a familiar,
 easy-to-browse streaming site. Point it at a library organised by
-[Pinchflat](https://github.com/kieraneglin/pinchflat) and it reads the channels, titles,
+[Pinchflat](https://github.com/kieraneglin/pinchflat) or [Pinchflat-NGX](https://github.com/TheBadFella/pinchflat-ngx) and it reads the channels, titles,
 descriptions and artwork straight from the files, with nothing copied or changed. You get a home page of rows, channel pages, search, playlists and a player with a
 proper quality menu that transcodes on the fly, so the same library plays smoothly on a
 desktop or on a phone on mobile data. It runs as a single Docker container on
