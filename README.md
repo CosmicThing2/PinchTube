@@ -189,8 +189,8 @@ Channel Name/
 
 ### 1. Download PinchTube
 
-PinchTube is published as a ready-made image, so all you need are two small files: the
-compose file and the settings file.
+PinchTube is published as a ready-made image, so all you need is a compose file. Change
+`./media` under `volumes:` to your downloads folder; everything else works as it is.
 
 ```bash
 mkdir pinchtube && cd pinchtube
@@ -205,6 +205,8 @@ services:
     container_name: pinchtube
     restart: unless-stopped
     ports:
+      # Opens PinchTube on port 8150. Use "127.0.0.1:8150:8080" instead to only
+      # accept connections from this machine, e.g. behind a reverse proxy.
       - "8150:8080"
 
     environment:
@@ -221,11 +223,12 @@ services:
       
       # Set to "true" when a reverse proxy (Caddy, nginx, Traefik) sits in
       # front, so X-Forwarded-For / X-Forwarded-Proto are believed.
-      TRUST_PROXY: false
+      TRUST_PROXY: "false"
       LOG_LEVEL: info
 
     volumes:
-      # Media folder, mounted read-only, /media/<channels> must exist!
+      # Your downloads: change ./media to the folder holding your channel
+      # folders (where Pinchflat saves to). Mounted read-only.
       - ./media:/media:ro
       # App database, settings, session key
       - ./data/config:/config
@@ -242,7 +245,7 @@ services:
     # devices:
     #   - /dev/dri:/dev/dri
     # group_add:
-    #   - "${RENDER_GID:-44}"
+    #   - "44"   # replace 44 with the number the stat command above prints
     #
     # NVIDIA (NVENC): needs the NVIDIA Container Toolkit on the host.
     # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
@@ -263,7 +266,7 @@ services:
 > See [Hardware acceleration](docs/GUIDE.md#hardware-acceleration) for the details.
 
 Uncomment the block for your GPU at the bottom of `docker-compose.yml`. For AMD and Intel,
-also set `RENDER_GID` in `.env` to the output of:
+also replace `44` under `group_add:` with the output of:
 
 ```bash
 stat -c '%g' /dev/dri/renderD128

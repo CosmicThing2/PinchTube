@@ -42,15 +42,14 @@ It runs as a single Docker container. It is designed for a private network — s
 
 ## Quick start
 
-1. **Download the compose file and the settings file** into a new folder:
+1. **Download the compose file** into a new folder:
 
    ```bash
    mkdir pinchtube && cd pinchtube
    curl -O https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/docker-compose.yml
-   curl -o .env https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/.env.example
    ```
 
-   Open `.env` and set at least `MEDIA_PATH` to the folder holding your downloads.
+   Open it and change `./media` under `volumes:` to the folder holding your downloads.
    Everything else has a sensible default.
 
 2. **Turn on hardware transcoding (optional).** Uncomment the block for your GPU at the
@@ -127,18 +126,17 @@ database. Library and transcoding settings are shared by the whole server and on
 administrators can change them; everything else — home page layout, playback preferences,
 theme — is each user's own.
 
-The variables in `.env` only cover things Docker needs before the app starts:
+`docker-compose.yml` only covers things Docker needs before the app starts:
 
-| Variable | Default | Purpose |
+| Setting | Default | Purpose |
 | --- | --- | --- |
-| `MEDIA_PATH` | `./media` | Folder on the host holding your downloads (mounted read-only) |
-| `HOST_PORT` | `8150` | Port on the host |
-| `BIND_ADDRESS` | `0.0.0.0` | `127.0.0.1` to accept connections from this machine only |
-| `TZ` | `Etc/UTC` | Time zone for log timestamps |
+| `./media` under `volumes:` | `./media` | Folder on the host holding your downloads (mounted read-only) |
+| `ports:` | `"8150:8080"` | The first number is the port on the host. `"127.0.0.1:8150:8080"` accepts connections from this machine only |
+| `TZ` | `Etc/UTC` | Time zone for log timestamps, e.g. `Europe/London` |
 | `PUID` / `PGID` | `1000` | The user the app runs as |
-| `RENDER_GID` | `44` | AMD/Intel only: host group owning `/dev/dri/renderD128` |
-| `SECURE_COOKIES` | `auto` | `auto` marks cookies Secure on HTTPS requests; or force `true`/`false` |
-| `TRUST_PROXY` | `false` | `true` only behind a reverse proxy |
+| `group_add:` | `"44"` | AMD/Intel only: host group owning `/dev/dri/renderD128` |
+| `SECURE_COOKIES` | `auto` | `auto` marks cookies Secure on HTTPS requests; or force `"true"`/`"false"` |
+| `TRUST_PROXY` | `"false"` | `"true"` only behind a reverse proxy |
 | `LOG_LEVEL` | `info` | `debug` is useful for tracing transcode jobs |
 
 Inside the container the media folder is always `/media`, which is also the default path in
@@ -244,8 +242,8 @@ ones that actually work. **Settings → Transcoding** shows the result for each,
 pick one or leave it on **Auto** (NVIDIA first, then VAAPI, then Quick Sync). If the GPU
 pipeline fails on a particular video, that video is retried in software and remembered.
 
-**AMD (VAAPI).** Uncomment the AMD/Intel block in `docker-compose.yml` and set `RENDER_GID`
-in `.env` to the group that owns the render node:
+**AMD (VAAPI).** Uncomment the AMD/Intel block in `docker-compose.yml` and replace `44`
+under `group_add:` with the group that owns the render node:
 
 ```bash
 stat -c '%g' /dev/dri/renderD128
@@ -302,8 +300,8 @@ If you must expose it, put it behind HTTPS and turn on two-factor sign-in for ev
 
 ### Behind a reverse proxy
 
-Set `TRUST_PROXY=true` so the real client address is used for sign-in throttling, and
-`BIND_ADDRESS=127.0.0.1` if the proxy runs on the same machine. A minimal Caddyfile:
+Set `TRUST_PROXY: "true"` so the real client address is used for sign-in throttling, and
+change the port to `"127.0.0.1:8150:8080"` if the proxy runs on the same machine. A minimal Caddyfile:
 
 ```
 media.example.internal {
