@@ -1,0 +1,66 @@
+services:
+  pinchtube:
+    # The published image. To build it yourself instead, see "Building from
+    # source" in docs/GUIDE.md.
+    image: ghcr.io/cosmicthing2/pinchtube:latest
+    container_name: pinchtube
+    restart: unless-stopped
+
+    # The app runs as PUID:PGID below. The container briefly starts as root only
+    # to fix the ownership of the folders under volumes:, then drops to that
+    # user — so a fresh ./data created by Docker sorts itself out with no
+    # manual chown. (To skip that entirely, set `user: "1000:1000"` here and
+    # pre-create the folders yourself.)
+
+    ports:
+      # Set BIND_ADDRESS=127.0.0.1 in .env to only accept connections from this
+      # machine — for example when a reverse proxy on the same host is the only
+      # way in.
+      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-8150}:8080"
+
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      TZ: "${TZ:-Etc/UTC}"
+      # "auto" marks the session cookie Secure whenever the request arrived
+      # over HTTPS. Force with "true" / "false" if you need to.
+      SECURE_COOKIES: "${SECURE_COOKIES:-auto}"
+      # Set to "true" when a reverse proxy (Caddy, nginx, Traefik) sits in
+      # front, so X-Forwarded-For / X-Forwarded-Proto are believed. Leave it
+      # "false" if the app is reached directly — otherwise clients could fake
+      # their address.
+      TRUST_PROXY: "${TRUST_PROXY:-false}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+
+    volumes:
+      # Your downloads, mounted read-only. Set MEDIA_PATH in .env.
+      - "${MEDIA_PATH:-./media}:/media:ro"
+      # App database, settings, session key
+      - ./data/config:/config
+      # Transcoded HLS segments + thumbnails (safe to delete any time)
+      - ./data/cache:/cache
+
+    # ---- Hardware transcoding (optional) -----------------------------------
+    # Without any of the blocks below, transcoding runs on the CPU (libx264).
+    # Uncomment the one for your GPU. Settings → Transcoding shows what the
+    # app detected once it is running.
+    #
+    # AMD or Intel (VAAPI / Quick Sync): pass the render node through, and add
+    # the group that owns it on the host:   stat -c '%g' /dev/dri/renderD128
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "${RENDER_GID:-44}"
+    #
+    # NVIDIA (NVENC): needs the NVIDIA Container Toolkit on the host.
+    # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu, video, compute, utility]
+    # and add these under environment: above
+    #   NVIDIA_VISIBLE_DEVICES: all
+    #   NVIDIA_DRIVER_CAPABILITIES: compute,video,utility

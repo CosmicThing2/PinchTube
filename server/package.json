@@ -1,0 +1,30 @@
+{
+  "name": "pinchtube-server",
+  "version": "2026.10.27",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --packages=external --outfile=dist/server.cjs",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/server.cjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/static": "^10.1.7",
+    "better-sqlite3": "^11.8.1",
+    "chokidar": "^4.0.3",
+    "fast-xml-parser": "^5.11.2",
+    "fastify": "^5.12.7",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.1",
+    "@types/qrcode": "^1.5.5",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

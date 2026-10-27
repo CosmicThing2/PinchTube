@@ -189,16 +189,16 @@ Channel Name/
 
 ### 1. Download PinchTube
 
+PinchTube is published as a ready-made image, so all you need are two small files: the
+compose file and the settings file.
+
 ```bash
-git clone https://github.com/CosmicThing2/PinchTube.git
-cd PinchTube
+mkdir pinchtube && cd pinchtube
+curl -O https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/.env.example
 ```
 
 ### 2. Configure it
-
-```bash
-cp .env.example .env
-```
 
 Open `.env` and set `MEDIA_PATH` to Pinchflat's media folder. Everything else has a
 sensible default — the port (`8150`), time zone and user IDs are there if you need them.
@@ -217,10 +217,9 @@ stat -c '%g' /dev/dri/renderD128
 ### 4. Start it
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
-
-The first build takes a few minutes.
 
 ### 5. Create your account
 
@@ -245,12 +244,13 @@ The first library scan starts on its own; you can follow it under **Settings →
 ### Updating
 
 ```bash
-git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Your accounts, history and settings are kept, and database changes are applied
-automatically.
+automatically. To build the image yourself instead, see
+[Building from source](docs/GUIDE.md#building-from-source).
 
 ## Documentation
 

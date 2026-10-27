@@ -1,0 +1,68 @@
+# Builds the Docker image and publishes it to the GitHub Container Registry as
+# ghcr.io/cosmicthing2/pinchtube whenever a release tag such as v2026.10.27 is
+# pushed (publishing a release on GitHub creates that tag). It can also be run
+# by hand from the Actions tab to rebuild a tag.
+name: Publish Docker image
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/cosmicthing2/pinchtube
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # The version shown under Settings → System comes from server/src/version.ts,
+      # so a release whose tag does not match it would show the wrong number.
+      - name: Check the version matches the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          code="$(sed -n "s/.*APP_VERSION = '\(.*\)'.*/\1/p" server/src/version.ts)"
+          if [ "$tag" != "$code" ]; then
+            echo "::error::Tag is $tag but server/src/version.ts says $code. Update one to match."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # v2026.10.27 becomes the tags "2026.10.27" and "latest".
+      - name: Work out the image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=match,pattern=v(.*),group=1
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

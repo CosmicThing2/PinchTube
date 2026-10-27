@@ -42,16 +42,25 @@ It runs as a single Docker container. It is designed for a private network — s
 
 ## Quick start
 
-1. **Copy `.env.example` to `.env`** and set at least `MEDIA_PATH` to the folder holding your
-   downloads. Everything else has a sensible default.
+1. **Download the compose file and the settings file** into a new folder:
+
+   ```bash
+   mkdir pinchtube && cd pinchtube
+   curl -O https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/docker-compose.yml
+   curl -o .env https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/.env.example
+   ```
+
+   Open `.env` and set at least `MEDIA_PATH` to the folder holding your downloads.
+   Everything else has a sensible default.
 
 2. **Turn on hardware transcoding (optional).** Uncomment the block for your GPU at the
    bottom of `docker-compose.yml` — see [Hardware acceleration](#hardware-acceleration).
 
-3. **Build and start it:**
+3. **Download the image and start it:**
 
    ```bash
-   docker compose up -d --build
+   docker compose pull
+   docker compose up -d
    ```
 
 4. **Find the setup code.** Until the first account exists, creating it needs a one-off code
@@ -308,9 +317,32 @@ the app still works and iOS will still add it to the home screen in fullscreen m
 
 ## Upgrading
 
-Pull or copy the new version, then `docker compose up -d --build`. Database changes are
-applied automatically on start. When upgrading from a single-user version, the existing
-account becomes the administrator and keeps its watch history, queue and settings.
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Database changes are applied automatically on start.
+
+Each release is tagged with its date, such as `2026.10.27`, as well as `latest`. To stay on
+one release, change `:latest` in `docker-compose.yml` to that tag.
+
+### Building from source
+
+Clone the repository and add a `docker-compose.override.yml` next to `docker-compose.yml`
+that tells Compose to build the image rather than download it:
+
+```yaml
+services:
+  pinchtube:
+    build: .
+```
+
+Then build and start it, and do the same again after each `git pull`:
+
+```bash
+docker compose up -d --build
+```
 
 
 ## Development
