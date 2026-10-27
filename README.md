@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-yes-2ea44f">
+  <a href="https://github.com/CosmicThing2/PinchTube/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/CosmicThing2/PinchTube?display_name=tag&label=release&color=2ea44f"></a>
   <img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white">
   <img alt="Hardware transcoding" src="https://img.shields.io/badge/GPU-AMD%20%7C%20Intel%20%7C%20NVIDIA-555">
   <img alt="Mobile friendly" src="https://img.shields.io/badge/mobile-friendly-ff3d5e">
