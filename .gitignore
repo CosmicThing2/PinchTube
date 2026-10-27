@@ -1,6 +1,8 @@
 node_modules/
 dist/
 data/
+/config/
+/cache/
 *.log
 .env
 docker-compose.override.yml

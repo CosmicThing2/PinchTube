@@ -231,9 +231,9 @@ services:
       # folders (where Pinchflat saves to). Mounted read-only.
       - ./media:/media:ro
       # App database, settings, session key
-      - ./data/config:/config
+      - ./config:/config
       # Transcoded HLS segments + thumbnails (safe to delete any time)
-      - ./data/cache:/cache
+      - ./cache:/cache
 
     # ---- Hardware transcoding (optional) -----------------------------------
     # Without any of the blocks below, transcoding runs on the CPU (libx264).

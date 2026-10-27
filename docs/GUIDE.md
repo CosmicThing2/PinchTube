@@ -152,7 +152,9 @@ When a bind-mounted host path does not exist yet, the *Docker daemon* creates it
 before the container starts — so the container cannot create those folders with the right
 owner. To deal with that, the entrypoint starts as root, takes ownership of `/config` and
 `/cache` if it is wrong, then drops to `PUID:PGID` and hands over to the app. Root exists
-only for those few milliseconds, and only to call `chown`.
+only for those few milliseconds, and only to call `chown`. Both are mounted straight from
+folders next to the compose file (`./config` and `./cache`), so everything PinchTube creates
+on the host ends up owned by `PUID:PGID`.
 
 If you would rather it never ran as root at all, set `user: "1000:1000"` in the compose
 file and create the folders yourself first. The entrypoint detects that it is already
@@ -451,9 +453,9 @@ could not read it. Run a **Full rescan** from Settings → Library.
 **A user cannot see a channel** — check **All channels**, or the channel ticks, for that
 user under Settings → Users.
 
-**The container will not start, with a permission error** — the entrypoint should fix
-`data` ownership on its own. If you have set `user:` in the compose file it cannot, so
-correct it by hand: `sudo chown -R 1000:1000 data`.
+**The container will not start, with a permission error** — the entrypoint should fix the
+ownership of `config` and `cache` on its own. If you have set `user:` in the compose file it
+cannot, so correct it by hand: `sudo chown -R 1000:1000 config cache`.
 
 **The container will not start: "error gathering device information" for `/dev/dri`** —
 the host has no GPU render node. Comment the `devices:` block out again.
