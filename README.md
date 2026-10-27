@@ -194,16 +194,71 @@ compose file and the settings file.
 
 ```bash
 mkdir pinchtube && cd pinchtube
-curl -O https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/CosmicThing2/PinchTube/main/.env.example
+touch docker-compose.yaml
+nano docker-compose.yaml
+```
+Compose file:
+```yml
+services:
+  pinchtube:
+    image: ghcr.io/cosmicthing2/pinchtube:latest
+    container_name: pinchtube
+    restart: unless-stopped
+    ports:
+      - "8150:8080"
+
+    environment:
+      # The user the app runs as, needs read access to media folder
+      PUID: 1000
+      PGID: 1000
+      
+      # Timezone
+      TZ: Etc/UTC
+      
+      # "auto" marks the session cookie Secure whenever the request arrived
+      # over HTTPS. Force with "true" / "false" if you need to.
+      SECURE_COOKIES: auto
+      
+      # Set to "true" when a reverse proxy (Caddy, nginx, Traefik) sits in
+      # front, so X-Forwarded-For / X-Forwarded-Proto are believed.
+      TRUST_PROXY: false
+      LOG_LEVEL: info
+
+    volumes:
+      # Media folder, mounted read-only, /media/<channels> must exist!
+      - ./media:/media:ro
+      # App database, settings, session key
+      - ./data/config:/config
+      # Transcoded HLS segments + thumbnails (safe to delete any time)
+      - ./data/cache:/cache
+
+    # ---- Hardware transcoding (optional) -----------------------------------
+    # Without any of the blocks below, transcoding runs on the CPU (libx264).
+    # Uncomment the one for your GPU. Settings → Transcoding shows what the
+    # app detected once it is running.
+    #
+    # AMD or Intel (VAAPI / Quick Sync): pass the render node through, and add
+    # the group that owns it on the host:   stat -c '%g' /dev/dri/renderD128
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "${RENDER_GID:-44}"
+    #
+    # NVIDIA (NVENC): needs the NVIDIA Container Toolkit on the host.
+    # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu, video, compute, utility]
+    # and add these under environment: above
+    #   NVIDIA_VISIBLE_DEVICES: all
+    #   NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
 ```
 
-### 2. Configure it
-
-Open `.env` and set `MEDIA_PATH` to Pinchflat's media folder. Everything else has a
-sensible default — the port (`8150`), time zone and user IDs are there if you need them.
-
-### 3. Turn on hardware transcoding
+### 2. Turn on hardware transcoding
 > This isn't required but is recommended. Without it Pinchtube will transcode on the CPU which will be significantly slower.
 > See [Hardware acceleration](docs/GUIDE.md#hardware-acceleration) for the details.
 
@@ -214,14 +269,14 @@ also set `RENDER_GID` in `.env` to the output of:
 stat -c '%g' /dev/dri/renderD128
 ```
 
-### 4. Start it
+### 3. Start it
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-### 5. Create your account
+### 4. Create your account
 
 The first account needs a one-time setup code, so that nobody else on your network can claim
 the server before you do. It is printed in the log:
