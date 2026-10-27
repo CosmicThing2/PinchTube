@@ -10,6 +10,7 @@ import { EmptyState, Spinner } from '../components/Common';
 import { useApp } from '../lib/app-context';
 import { useQueue } from '../lib/queue-context';
 import { linkify } from '../lib/linkify';
+import { chapterOwning, uniqueChapters } from '../lib/chapters';
 import { VideoListItem } from '../components/VideoCard';
 import { formatBytes, formatDate, formatDuration } from '../lib/format';
 import { IconCheck, IconEye, IconEyeOff, IconPlaylistAdd, IconQueue, IconYouTube } from '../components/Icons';
@@ -276,6 +277,11 @@ export function Watch() {
 
   // youtube.com bounces phones to m.youtube.com anyway, but linking there
   // directly skips the redirect on a touch device.
+  // Listed once each, with one highlighted even where chapters overlap — the
+  // same one the progress bar shows.
+  const chapterList = uniqueChapters(video.chapters);
+  const activeChapter = chapterOwning(chapterList, currentTime);
+
   const youtubeUrl = video.youtubeId
     ? `https://${window.matchMedia('(pointer: coarse)').matches ? 'm' : 'www'}.youtube.com/watch?v=${video.youtubeId}`
     : null;
@@ -389,11 +395,11 @@ export function Watch() {
           ) : null}
         </div>
 
-        {video.chapters.length ? (
+        {chapterList.length ? (
           <div className="chapters">
             <h2>Chapters</h2>
-            {video.chapters.map((chapter, index) => {
-              const active = currentTime >= chapter.start && currentTime < chapter.end;
+            {chapterList.map((chapter, index) => {
+              const active = chapter === activeChapter;
               return (
                 <button
                   key={index}

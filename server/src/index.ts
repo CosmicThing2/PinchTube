@@ -1,5 +1,5 @@
 import path from 'node:path';
-import Fastify from 'fastify';
+import Fastify, { LogController } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 
@@ -59,7 +59,8 @@ async function main(): Promise<void> {
     logger: { level: config.logLevel },
     trustProxy: config.trustProxy,
     bodyLimit: 1024 * 1024,
-    disableRequestLogging: true,
+    // No line per request: the player fetches a segment every few seconds.
+    logController: new LogController({ disableRequestLogging: true }),
   });
 
   setLibraryLogger({

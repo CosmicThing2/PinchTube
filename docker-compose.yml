@@ -18,7 +18,7 @@ services:
       
       # "auto" marks the session cookie Secure whenever the request arrived
       # over HTTPS. Force with "true" / "false" if you need to.
-      SECURE_COOKIES: auto
+      SECURE_COOKIES: "auto"
       
       # Set to "true" when a reverse proxy (Caddy, nginx, Traefik) sits in
       # front, so X-Forwarded-For / X-Forwarded-Proto are believed.

@@ -13,6 +13,7 @@ import Hls from 'hls.js';
 import type { Chapter, VideoDto, WatchPayload } from '../lib/api';
 import { urls } from '../lib/api';
 import { formatDuration } from '../lib/format';
+import { flattenChapters } from '../lib/chapters';
 import {
   IconCaptions,
   IconCheck,
@@ -859,14 +860,15 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     video.subtitles.length,
   ]);
 
-  // Chapter segments for the bar, trimmed to the real duration. With no chapters
-  // the whole bar is one segment, so the rendering path is the same either way.
-  const hasChapters = duration > 0 && video.chapters.length > 0;
+  // Chapter segments for the bar: one piece per stretch of the video, even
+  // where chapters overlap. With no chapters the whole bar is one segment, so
+  // the rendering path is the same either way.
+  const flattened = useMemo(() => flattenChapters(video.chapters, duration), [video.chapters, duration]);
+  const hasChapters = flattened.length > 0;
   const segments: Chapter[] = hasChapters
-    ? video.chapters
-        .map((chapter) => ({ ...chapter, end: Math.min(chapter.end, duration) }))
-        .filter((chapter) => chapter.end > chapter.start)
+    ? flattened
     : [{ start: 0, end: Math.max(duration, 1), title: '', kind: 'chapter' }];
+  const timeline = Math.max(duration, 1);
   const currentChapter = hasChapters ? chapterAt(segments, current) : null;
   const autoSkip = playback.sponsorAutoSkip === true;
   const activeSponsor =
@@ -1245,7 +1247,16 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
                   <div
                     key={index}
                     className={`seg${segment.kind === 'sponsor' ? ' sponsor' : ''}${hovered ? ' hovered' : ''}`}
-                    style={{ flexGrow: length }}
+                    // Placed by time rather than laid out in a row, so the bar
+                    // matches the clock however many tiny chapters there are.
+                    // Every piece but the last leaves a hairline gap after it.
+                    style={{
+                      left: `${(segment.start / timeline) * 100}%`,
+                      width:
+                        index === segments.length - 1
+                          ? `${(length / timeline) * 100}%`
+                          : `max(1px, calc(${(length / timeline) * 100}% - 2px))`,
+                    }}
                   >
                     <div className="buffered" style={{ width: `${buffered * 100}%` }} />
                     <div className="played" style={{ width: `${played * 100}%` }} />

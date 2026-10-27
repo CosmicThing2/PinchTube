@@ -2027,9 +2027,6 @@ textarea.input {
 
 .player-scrub .track {
   position: relative;
-  display: flex;
-  gap: 2px;
-  align-items: center;
   height: 4px;
   width: 100%;
   overflow: visible;
@@ -2042,10 +2039,9 @@ textarea.input {
 }
 
 .player-scrub .seg {
-  position: relative;
-  height: 100%;
-  flex-basis: 0;
-  min-width: 2px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.28);
   overflow: hidden;
