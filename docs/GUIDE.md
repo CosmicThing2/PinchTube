@@ -32,8 +32,8 @@ It runs as a single Docker container. It is designed for a private network — s
   users. The queue collects videos to play one after another.
 - **Works properly on a phone.** Bottom tab bar, touch scrubbing, double-tap to skip,
   fullscreen swipe gestures, a data saver mode, installable to the home screen.
-- **Bends to how you like it.** Theater mode, chapters, SponsorBlock segments, adjustable
-  subtitle size, and a home page whose rows — including each channel row — you can reorder
+- **Bends to how you like it.** Theater mode, chapters, SponsorBlock segments (skipped
+  automatically if you like), your own accent colour, adjustable subtitle size, and a home page whose rows — including each channel row — you can reorder
   and switch off.
 - **Is private.** scrypt password hashing, optional two-factor sign-in with any
   authenticator app, signed HTTP-only session cookies and every API route behind

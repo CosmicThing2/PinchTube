@@ -114,8 +114,11 @@ Thank you!
   administrators choose which channels each person can see.
 - **Built for phones** - bottom tab bar, touch gestures, a data saver mode with its own
   quality, and installable to the home screen.
-- **A proper player** - resume where you left off, chapters, SponsorBlock segments with a
-  skip button, theater mode, keyboard shortcuts and media controls on the lock screen.
+- **A proper player** - resume where you left off, chapters, SponsorBlock segments skipped
+  automatically or with a button, theater mode, keyboard shortcuts and media controls on the
+  lock screen.
+- **Make it yours** - light and dark themes, your own accent colour, card sizes and a
+  home page laid out the way you like.
 - **Private and secure** - optional two-factor sign-in with any authenticator app, scrypt
   password hashing, sign-in throttling and strict security headers.
 
