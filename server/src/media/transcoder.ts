@@ -43,6 +43,15 @@ interface Job {
 }
 
 const jobs = new Map<string, Job>();
+/**
+ * Short side encodes that make a few segments ahead of time, keyed like jobs.
+ * Kept apart from `jobs` so preparing segments never stops the encode that is
+ * feeding what someone is watching right now.
+ */
+const warmers = new Map<string, ChildProcess>();
+const MAX_WARMERS = 2;
+/** How many segments a warm-up makes: enough to play on while the main job catches up. */
+const WARM_SEGMENTS = 3;
 /** Videos whose hardware pipeline failed — these stay on software for this run. */
 const hwBlocklist = new Set<string>();
 
@@ -99,8 +108,16 @@ function currentHead(dir: string, startSegment: number): number {
   return head;
 }
 
-function buildArgs(job: Omit<Job, 'proc' | 'exited' | 'exitCode' | 'killed' | 'stderr' | 'lastAccess' | 'startedAt'>, accel: Accel | null): string[] {
+type JobPlan = Omit<Job, 'proc' | 'exited' | 'exitCode' | 'killed' | 'stderr' | 'lastAccess' | 'startedAt'>;
+
+/** `seconds` limits the output (a warm-up); without it the job runs to the end. */
+function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[] {
   const { source, rendition, segmentSeconds, startSegment, dir } = job;
+  // A warm-up writes its own playlist file, so it never clashes with the main job's.
+  const muxer = [
+    ...(seconds ? ['-t', String(seconds)] : []),
+    ...hlsMuxerArgs(segmentSeconds, startSegment, dir, seconds ? 'warm.m3u8' : 'ffmpeg.m3u8'),
+  ];
   const start = startSegment * segmentSeconds;
   const gop = Math.max(1, Math.round(segmentSeconds * 30));
   const settings = getSettings();
@@ -115,7 +132,7 @@ function buildArgs(job: Omit<Job, 'proc' | 'exited' | 'exitCode' | 'killed' | 's
     args.push('-c:a', 'aac', '-b:a', `${rendition.audioBitrate}k`, '-ac', '2', '-ar', '48000');
     if (start > 0) args.push('-output_ts_offset', String(start));
     args.push('-muxdelay', '0', '-muxpreload', '0');
-    args.push(...hlsMuxerArgs(segmentSeconds, startSegment, dir));
+    args.push(...muxer);
     return args;
   }
 
@@ -183,12 +200,12 @@ function buildArgs(job: Omit<Job, 'proc' | 'exited' | 'exitCode' | 'killed' | 's
   if (start > 0) args.push('-output_ts_offset', String(start));
   args.push('-muxdelay', '0', '-muxpreload', '0');
 
-  args.push(...hlsMuxerArgs(segmentSeconds, startSegment, dir));
+  args.push(...muxer);
 
   return args;
 }
 
-function hlsMuxerArgs(segmentSeconds: number, startSegment: number, dir: string): string[] {
+function hlsMuxerArgs(segmentSeconds: number, startSegment: number, dir: string, playlist: string): string[] {
   return [
     '-f', 'hls',
     '-hls_time', String(segmentSeconds),
@@ -198,7 +215,7 @@ function hlsMuxerArgs(segmentSeconds: number, startSegment: number, dir: string)
     '-hls_flags', 'independent_segments+temp_file',
     '-start_number', String(startSegment),
     '-hls_segment_filename', path.join(dir, 'seg-%05d.ts'),
-    path.join(dir, 'ffmpeg.m3u8'),
+    path.join(dir, playlist),
   ];
 }
 
@@ -213,7 +230,9 @@ async function stopJob(job: Job, reason: string): Promise<void> {
     }
   }
   log.debug(`transcode: stopped ${job.key} (${reason})`);
-  // Remove any half-written segment so nothing partial is ever served.
+  // Remove any half-written segment so nothing partial is ever served — unless
+  // a warm-up is writing into the same folder, whose files would go too.
+  if (warmers.has(job.key)) return;
   try {
     const names = await fsp.readdir(job.dir);
     await Promise.all(
@@ -412,9 +431,72 @@ export function startReaper(): void {
   reaper.unref?.();
 }
 
+function stopWarmers(): void {
+  for (const proc of warmers.values()) {
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      /* already gone */
+    }
+  }
+  warmers.clear();
+}
+
+/**
+ * Makes the few segments starting at `index` ahead of time, so a jump there —
+ * skipping a sponsor segment — plays at once instead of waiting for ffmpeg to
+ * start over. Does nothing when they exist already, or when the running job
+ * will reach them shortly anyway. Returns without waiting for the encode.
+ */
+export async function warmSegments(source: TranscodeSource, rendition: Rendition, index: number): Promise<void> {
+  const segmentSeconds = getSettings().transcode.segmentSeconds;
+  const total = segmentCount(source.duration, segmentSeconds);
+  if (index < 0 || index >= total) return;
+  const last = Math.min(total - 1, index + WARM_SEGMENTS - 1);
+  const key = `${source.id}/${rendition.id}`;
+  const dir = renditionDir(source.id, rendition.id);
+
+  await oneAtATime(async () => {
+    let missing = false;
+    for (let i = index; i <= last; i++) if (!segmentReady(dir, i)) missing = true;
+    if (!missing || warmers.has(key) || warmers.size >= MAX_WARMERS) return;
+
+    const live = jobs.get(key);
+    if (live && !live.exited) {
+      const head = currentHead(dir, live.startSegment);
+      if (index >= live.startSegment && index <= head + LOOKAHEAD_SEGMENTS + 1) return;
+    }
+
+    await fsp.mkdir(dir, { recursive: true });
+    const accel = isAudioOnly(rendition) || hwBlocklist.has(source.id) ? null : chosenAccel();
+    const plan: JobPlan = {
+      key,
+      videoId: source.id,
+      renditionId: rendition.id,
+      dir,
+      startSegment: index,
+      usedHw: accel !== null,
+      source,
+      rendition,
+      segmentSeconds,
+    };
+    const proc = spawn(config.ffmpeg, buildArgs(plan, accel, (last - index + 1) * segmentSeconds), {
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    warmers.set(key, proc);
+    const done = () => {
+      if (warmers.get(key) === proc) warmers.delete(key);
+    };
+    proc.on('error', done);
+    proc.on('close', done);
+    log.debug(`transcode: warming ${key} segments ${index}-${last}`);
+  });
+}
+
 export async function shutdownTranscoder(): Promise<void> {
   if (reaper) clearInterval(reaper);
   reaper = null;
+  stopWarmers();
   await Promise.all(Array.from(jobs.values(), (job) => stopJob(job, 'shutdown')));
 }
 
@@ -434,6 +516,7 @@ export function activeJobs(): { video: string; rendition: string; startSegment: 
  */
 export async function resetTranscodes(): Promise<void> {
   await oneAtATime(async () => {
+    stopWarmers();
     await Promise.all(Array.from(jobs.values(), (job) => stopJob(job, 'cache cleared')));
     await clearTranscodeCache();
   });

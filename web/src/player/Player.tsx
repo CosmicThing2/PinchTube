@@ -11,7 +11,7 @@ import {
 } from 'react';
 import Hls from 'hls.js';
 import type { Chapter, VideoDto, WatchPayload } from '../lib/api';
-import { urls } from '../lib/api';
+import { api, urls } from '../lib/api';
 import { formatDuration } from '../lib/format';
 import { flattenChapters } from '../lib/chapters';
 import {
@@ -35,6 +35,8 @@ import {
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const CONTROL_HIDE_MS = 3000;
 const PROGRESS_INTERVAL_MS = 10_000;
+/** How far ahead of a sponsor segment to ask the server to prepare where a skip lands. */
+const WARM_AHEAD_SECONDS = 30;
 
 /**
  * Cues sit three lines up from the bottom so they clear the control bar, which
@@ -904,6 +906,45 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     const timer = window.setTimeout(() => setSkipped(null), 5000);
     return () => window.clearTimeout(timer);
   }, [skipped]);
+
+  // Skipping lands on a part of the video the server has usually not made yet,
+  // which shows as a pause while it starts encoding there. So as a sponsor
+  // segment comes up (or starts, when skipping is by button), the server is
+  // asked to prepare the first few seconds after it. Direct play needs none.
+  const warmedRef = useRef(new Set<string>());
+  const skipping = autoSkip || playback.sponsorSkipPrompt !== false;
+  const warmTarget = !skipping || isOriginal
+    ? null
+    : currentChapter?.kind === 'sponsor'
+      ? currentChapter
+      : (segments.find(
+          (segment) =>
+            segment.kind === 'sponsor' && segment.start > current && segment.start - current <= WARM_AHEAD_SECONDS,
+        ) ?? null);
+  const warmAt = warmTarget && warmTarget.end < duration - 1 ? warmTarget.end : null;
+
+  useEffect(() => {
+    if (warmAt === null) return;
+    const rendition = playingRendition();
+    if (!rendition) return;
+    const key = `${rendition}:${warmAt}`;
+    if (warmedRef.current.has(key)) return;
+    warmedRef.current.add(key);
+    void api.post(`/api/stream/${video.id}/${rendition}/warm`, { time: warmAt }).catch(() => {});
+    // playingRendition reads refs; the level it reports is checked again each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warmAt, video.id, current]);
+
+  /** The transcoded quality being played, as the server names it, or null when unknown. */
+  function playingRendition(): string | null {
+    if (isAudio) return 'audio';
+    const hls = hlsRef.current;
+    if (hls) {
+      const level = hls.levels[hls.currentLevel >= 0 ? hls.currentLevel : hls.loadLevel];
+      return level ? (playback.renditions.find((r) => r.height === level.height)?.id ?? null) : null;
+    }
+    return quality !== 'auto' && quality !== 'original' ? quality : null;
+  }
 
   const unskipSponsor = (segment: Chapter) => {
     keepSponsorRef.current = segment.start;

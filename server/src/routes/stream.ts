@@ -6,7 +6,7 @@ import { getSettings, settingsFor } from '../settings.js';
 import { getVideo, parseSubtitles } from '../lib/videos.js';
 import { allowOriginal, findRendition, renditionsFor } from '../media/renditions.js';
 import { masterPlaylist, segmentCountFor, variantPlaylist } from '../media/hls.js';
-import { ensureSegment, type TranscodeSource } from '../media/transcoder.js';
+import { ensureSegment, warmSegments, type TranscodeSource } from '../media/transcoder.js';
 
 const CONTAINER_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -144,6 +144,30 @@ export function registerStreamRoutes(app: FastifyInstance): void {
       request.log.warn(`segment ${index} of ${row.id}/${rend.id} failed: ${err?.message ?? err}`);
       return reply.code(503).send({ error: 'Could not produce that segment' });
     }
+  });
+
+  // The player asks for this shortly before skipping a sponsor segment, so the
+  // segments where playback lands are ready by the time it jumps there.
+  app.post('/api/stream/:id/:rendition/warm', async (request, reply) => {
+    const { id, rendition } = request.params as any;
+    const body = (request.body ?? {}) as any;
+    const row = getVideo(request.user!, String(id));
+    if (!row) return reply.code(404).send({ error: 'Video not found' });
+    if (!row.duration) return reply.code(409).send({ error: 'Video duration is unknown' });
+    const rend = findRendition(String(rendition));
+    if (!rend) return reply.code(404).send({ error: 'Unknown quality' });
+    const time = Number(body.time);
+    if (!Number.isFinite(time) || time < 0 || time >= row.duration) {
+      return reply.code(400).send({ error: 'time must be within the video' });
+    }
+
+    const index = Math.floor(time / getSettings().transcode.segmentSeconds);
+    void warmSegments(
+      { id: row.id, path: row.path, duration: row.duration, width: row.width, height: row.height },
+      rend,
+      index,
+    ).catch((err) => request.log.warn(`warming ${row.id}/${rend.id} failed: ${err?.message ?? err}`));
+    return { ok: true };
   });
 
   // ---- sidecar subtitles, always served as WebVTT --------------------------
