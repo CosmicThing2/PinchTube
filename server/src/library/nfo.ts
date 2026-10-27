@@ -11,14 +11,37 @@ const parser = new XMLParser({
   parseAttributeValue: false,
 });
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+};
+
+/**
+ * Some downloaders write titles with HTML codes in them, escaped once more for
+ * XML ("&amp;#39;" in the file), so after the XML parser they still read
+ * "Don&#39;t". One more pass turns those into the characters they stand for.
+ */
+function decodeEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z]{2,6});/gi, (whole, code: string) => {
+    if (code[0] !== '#') return NAMED_ENTITIES[code.toLowerCase()] ?? whole;
+    const point = code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+    const valid = point > 0 && point <= 0x10ffff && (point < 0xd800 || point > 0xdfff);
+    return valid ? String.fromCodePoint(point) : whole;
+  });
+}
+
 function first(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (Array.isArray(value)) return first(value[0]);
   if (typeof value === 'object') {
     const text = (value as any)['#text'];
-    return text === undefined ? null : String(text).trim() || null;
+    return text === undefined ? null : decodeEntities(String(text)).trim() || null;
   }
-  const s = String(value).trim();
+  const s = decodeEntities(String(value)).trim();
   return s || null;
 }
 

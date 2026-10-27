@@ -19,7 +19,8 @@ const PROBE_CONCURRENCY = 4;
  * title is derived). A mismatch forces one full rescan so existing rows are
  * rebuilt rather than being kept alive by the directory-mtime fast path.
  */
-const SCAN_LOGIC_VERSION = 3;
+// 4: titles and descriptions have leftover HTML codes (&#39;) decoded.
+const SCAN_LOGIC_VERSION = 4;
 
 /** Half-written downloads, which are unplayable and must never enter the library. */
 const PARTIAL_MARKERS = ['.temp', '.part', '.tmp', '.download', '.crdownload', '.ytdl'];

@@ -1258,7 +1258,11 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
                           : `max(1px, calc(${(length / timeline) * 100}% - 2px))`,
                     }}
                   >
-                    <div className="buffered" style={{ width: `${buffered * 100}%` }} />
+                    {/* Buffering shown on a sponsor segment reads as "watched", and
+                        says little about a part that is usually skipped anyway. */}
+                    {segment.kind === 'sponsor' ? null : (
+                      <div className="buffered" style={{ width: `${buffered * 100}%` }} />
+                    )}
                     <div className="played" style={{ width: `${played * 100}%` }} />
                   </div>
                 );
