@@ -1223,7 +1223,9 @@ export function Settings() {
       {isAdmin ? (
       <section className="panel">
         <h2>System</h2>
-        <p className="panel-sub">PinchTube {system?.version ? `v${system.version}` : ''}</p>
+        <p className="panel-sub">
+          PinchTube {system?.version ? (/^\d/.test(system.version) ? `v${system.version}` : system.version) : ''}
+        </p>
 
         {system ? (
           <div className="stat-grid">

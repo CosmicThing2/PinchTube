@@ -66,6 +66,11 @@ ENV NODE_ENV=production \
 
 RUN mkdir -p /config /cache /media && chown -R 1000:1000 /config /cache
 
+# The release number, from the tag the publish workflow builds. Set after the
+# slow steps above, so a new number still reuses their cache.
+ARG APP_VERSION=dev
+ENV PINCHTUBE_VERSION=$APP_VERSION
+
 # Starts as root purely to fix the ownership of bind-mounted folders, then drops
 # to PUID:PGID before exec'ing the app. Nothing in the app itself needs root.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
