@@ -12,7 +12,7 @@ import { useQueue } from '../lib/queue-context';
 import { linkify } from '../lib/linkify';
 import { chapterOwning, uniqueChapters } from '../lib/chapters';
 import { VideoListItem } from '../components/VideoCard';
-import { formatBytes, formatDate, formatDuration } from '../lib/format';
+import { formatBytes, formatDate, formatDuration, shortSide } from '../lib/format';
 import { IconCheck, IconEye, IconEyeOff, IconPlaylistAdd, IconQueue, IconYouTube } from '../components/Icons';
 
 export function Watch() {
@@ -241,7 +241,7 @@ export function Watch() {
       : 0;
 
   const details = [
-    video.height ? `${video.height}p source` : null,
+    shortSide(video.width, video.height) ? `${shortSide(video.width, video.height)}p source` : null,
     video.vcodec ? video.vcodec.toUpperCase() : null,
     video.size ? formatBytes(video.size) : null,
     video.duration ? formatDuration(video.duration) : null,

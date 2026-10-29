@@ -18,6 +18,7 @@ import { applyLibrarySettings, setLibraryLogger, shutdownLibrary, triggerScan } 
 import { needsFullRescan } from './library/scanner.js';
 import { detectHardware, hardwareStatus } from './media/hwaccel.js';
 import { setTranscodeLogger, shutdownTranscoder, startReaper } from './media/transcoder.js';
+import { checkCacheFormat } from './media/cache.js';
 
 /**
  * Applied to every response. The content security policy only lets the page
@@ -160,6 +161,7 @@ async function main(): Promise<void> {
   if (caps.error) app.log.warn(caps.error);
   app.log.info(`Transcoding: ${hardwareStatus()}`);
 
+  if (await checkCacheFormat()) app.log.info('Cleared transcodes made by an older version');
   startReaper();
   applyLibrarySettings();
 

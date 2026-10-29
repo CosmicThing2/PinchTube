@@ -16,7 +16,7 @@ import {
   sizeBreakdown,
   type SortKey,
 } from '../lib/videos.js';
-import { AUDIO_RENDITION, allowOriginal, renditionsFor } from '../media/renditions.js';
+import { AUDIO_RENDITION, allowOriginal, renditionsFor, shortSide } from '../media/renditions.js';
 
 const SORTS: SortKey[] = ['date_desc', 'date_asc', 'title_asc', 'title_desc', 'added_desc', 'added_asc'];
 
@@ -157,10 +157,10 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
 
     const settings = settingsFor(viewer.id);
     const video = mapVideo(row, viewer);
-    const renditions = renditionsFor(row.height, settings.playback.maxQuality).map((r) => ({
+    const renditions = renditionsFor(shortSide(row.width, row.height), settings.playback.maxQuality).map((r) => ({
       id: r.id,
       label: r.label,
-      height: r.height,
+      size: r.size,
       bitrate: r.bitrate,
     }));
 

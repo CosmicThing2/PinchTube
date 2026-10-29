@@ -1,13 +1,13 @@
 import type { Rendition } from './renditions.js';
-import { scaledWidth } from './renditions.js';
+import { outputSize } from './renditions.js';
 
 export function segmentCountFor(duration: number, segmentSeconds: number): number {
   return Math.max(1, Math.ceil(duration / segmentSeconds));
 }
 
-function codecString(height: number): string {
+function codecString(size: number): string {
   // High profile; level 4.0 for 1080p and up, 3.1 below that.
-  return height >= 1080 ? 'avc1.640028,mp4a.40.2' : 'avc1.64001f,mp4a.40.2';
+  return size >= 1080 ? 'avc1.640028,mp4a.40.2' : 'avc1.64001f,mp4a.40.2';
 }
 
 export interface MasterVideo {
@@ -19,18 +19,18 @@ export function masterPlaylist(video: MasterVideo, renditions: Rendition[]): str
   const lines = ['#EXTM3U', '#EXT-X-VERSION:6', '#EXT-X-INDEPENDENT-SEGMENTS', ''];
 
   // Lowest first so a cold start on a phone does not open at 2160p.
-  const ordered = [...renditions].sort((a, b) => a.height - b.height);
+  const ordered = [...renditions].sort((a, b) => a.size - b.size);
 
   for (const rendition of ordered) {
     const bandwidth = Math.round((rendition.bitrate + rendition.audioBitrate) * 1000);
     const peak = Math.round((rendition.maxrate + rendition.audioBitrate) * 1000);
-    const width = scaledWidth(video.width, video.height, rendition.height);
+    const frame = outputSize(video.width, video.height, rendition.size);
     const attrs = [
       `BANDWIDTH=${bandwidth}`,
       `AVERAGE-BANDWIDTH=${bandwidth}`,
-      `CODECS="${codecString(rendition.height)}"`,
+      `CODECS="${codecString(rendition.size)}"`,
     ];
-    if (width) attrs.push(`RESOLUTION=${width}x${rendition.height}`);
+    if (frame.width) attrs.push(`RESOLUTION=${frame.width}x${frame.height}`);
     attrs.push(`NAME="${rendition.label}"`);
     void peak;
     lines.push(`#EXT-X-STREAM-INF:${attrs.join(',')}`);

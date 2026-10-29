@@ -109,9 +109,27 @@ export async function evictCache(protect: Set<string> = new Set()): Promise<numb
   return freed;
 }
 
+/**
+ * Bumped whenever segments made by an older version no longer match what
+ * this one makes, so they are not mixed into the same video. 2: portrait
+ * videos are sized by their shorter side.
+ */
+const CACHE_FORMAT = '2';
+const formatFile = () => path.join(paths.transcodeCache, '.format');
+
 export async function clearTranscodeCache(): Promise<void> {
   await fsp.rm(paths.transcodeCache, { recursive: true, force: true });
   await fsp.mkdir(paths.transcodeCache, { recursive: true });
+  await fsp.writeFile(formatFile(), CACHE_FORMAT);
+}
+
+/** Empties a transcode cache left by an older format. True when it did. */
+export async function checkCacheFormat(): Promise<boolean> {
+  const found = await fsp.readFile(formatFile(), 'utf8').catch(() => null);
+  if (found?.trim() === CACHE_FORMAT) return false;
+  const hadSegments = (await listCacheEntries()).length > 0;
+  await clearTranscodeCache();
+  return hadSegments;
 }
 
 export async function clearImageCache(): Promise<void> {

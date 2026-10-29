@@ -66,6 +66,12 @@ export function formatBytes(bytes: number | null | undefined): string {
   return `${value.toFixed(value >= 100 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
+/** A video's quality number, from its shorter side as on YouTube: 1080×1920 is 1080p. */
+export function shortSide(width: number | null | undefined, height: number | null | undefined): number | null {
+  if (width && height) return Math.min(width, height);
+  return height || null;
+}
+
 export function formatCount(n: number, singular: string, plural = `${singular}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? singular : plural}`;
 }

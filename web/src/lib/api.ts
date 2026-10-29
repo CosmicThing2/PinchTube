@@ -152,7 +152,8 @@ export interface HomeRowDto {
 export interface RenditionDto {
   id: string;
   label: string;
-  height: number;
+  /** The shorter side of the picture, as in "1080p". */
+  size: number;
   bitrate: number;
 }
 

@@ -12,8 +12,9 @@ import {
 import Hls from 'hls.js';
 import type { Chapter, VideoDto, WatchPayload } from '../lib/api';
 import { api, urls } from '../lib/api';
-import { formatDuration } from '../lib/format';
+import { formatDuration, shortSide } from '../lib/format';
 import { flattenChapters } from '../lib/chapters';
+import { StatsPanel } from './StatsPanel';
 import {
   IconCaptions,
   IconCheck,
@@ -119,7 +120,7 @@ const MEDIA_SESSION_ACTIONS = [
 
 /**
  * Maps a wanted quality onto something this particular video can actually offer,
- * falling back to the nearest rung by height. A queue set to 1440p will play a
+ * falling back to the nearest rung by size. A queue set to 1440p will play a
  * 1080p source at 1080p rather than silently dropping to Auto.
  */
 function resolveQuality(wanted: string, playback: WatchPayload['playback']): string {
@@ -135,9 +136,14 @@ function resolveQuality(wanted: string, playback: WatchPayload['playback']): str
 
   let best = playback.renditions[0];
   for (const rendition of playback.renditions) {
-    if (Math.abs(rendition.height - target) < Math.abs(best.height - target)) best = rendition;
+    if (Math.abs(rendition.size - target) < Math.abs(best.size - target)) best = rendition;
   }
   return best.id;
+}
+
+/** An hls.js level's quality number, named by its shorter side like the server's renditions. */
+function levelSize(level: { width: number; height: number }): number {
+  return shortSide(level.width, level.height) ?? 0;
 }
 
 /**
@@ -208,6 +214,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   const [speed, setSpeed] = useState(1);
   const [captions, setCaptions] = useState<number>(playback.subtitlesDefault && video.subtitles.length ? 0 : -1);
   const [menu, setMenu] = useState<MenuTab>(null);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -348,7 +355,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
 
       hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
         const level = hls.levels[data.level];
-        setAutoLevelLabel(level && level.height ? `${level.height}p` : '');
+        setAutoLevelLabel(level && levelSize(level) ? `${levelSize(level)}p` : '');
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -407,7 +414,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       hls.currentLevel = -1;
       return;
     }
-    const index = hls.levels.findIndex((level) => level.height === target.height);
+    const index = hls.levels.findIndex((level) => levelSize(level) === target.size);
     hls.currentLevel = index >= 0 ? index : -1;
   }
 
@@ -941,7 +948,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     const hls = hlsRef.current;
     if (hls) {
       const level = hls.levels[hls.currentLevel >= 0 ? hls.currentLevel : hls.loadLevel];
-      return level ? (playback.renditions.find((r) => r.height === level.height)?.id ?? null) : null;
+      return level ? (playback.renditions.find((r) => r.size === levelSize(level))?.id ?? null) : null;
     }
     return quality !== 'auto' && quality !== 'original' ? quality : null;
   }
@@ -1124,6 +1131,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   };
 
   // ---------------------------------------------------------------- render --
+  const originalSize = shortSide(playback.original.width, playback.original.height);
   const qualityLabel =
     quality === 'auto'
       ? autoLevelLabel
@@ -1251,6 +1259,20 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
             {flash.kind === 'pause' ? <IconPause /> : <IconPlay />}
           </span>
         </div>
+      ) : null}
+
+      {statsOpen ? (
+        <StatsPanel
+          videoRef={videoRef}
+          hlsRef={hlsRef}
+          videoId={video.id}
+          label={qualityLabel}
+          direct={isOriginal}
+          rendition={playingRendition}
+          fileBitrate={video.size && video.duration ? (video.size * 8) / video.duration : null}
+          codec={isOriginal ? video.vcodec : isAudio ? null : 'h264'}
+          onClose={() => setStatsOpen(false)}
+        />
       ) : null}
 
       {toast ? <div className="player-toast">{toast}</div> : null}
@@ -1458,7 +1480,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
           {playback.original.available ? (
             <MenuItem
               label="Original"
-              hint={playback.original.height ? `${playback.original.height}p` : undefined}
+              hint={originalSize ? `${originalSize}p` : undefined}
               selected={quality === 'original'}
               onClick={() => switchQuality('original')}
             />
@@ -1498,6 +1520,15 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
               }}
             />
           ))}
+          <div className="menu-head">Diagnostics</div>
+          <MenuItem
+            label="Stats for nerds"
+            selected={statsOpen}
+            onClick={() => {
+              setStatsOpen((open) => !open);
+              setMenu(null);
+            }}
+          />
         </div>
       ) : null}
 

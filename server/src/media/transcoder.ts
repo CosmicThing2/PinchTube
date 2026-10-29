@@ -7,7 +7,7 @@ import { getSettings } from '../settings.js';
 import { chosenAccel, type Accel } from './hwaccel.js';
 import { clearTranscodeCache, evictCache, touchCacheDir } from './cache.js';
 import type { Rendition } from './renditions.js';
-import { isAudioOnly, scaledWidth } from './renditions.js';
+import { isAudioOnly, outputSize } from './renditions.js';
 
 /** How far ahead of the encoder a request may be before we restart at that point. */
 const LOOKAHEAD_SEGMENTS = 3;
@@ -31,6 +31,8 @@ interface Job {
   startSegment: number;
   proc: ChildProcess;
   usedHw: boolean;
+  /** What does the encoding: a hardware kind such as 'vaapi', or 'software'. */
+  encoder: string;
   lastAccess: number;
   exited: boolean;
   exitCode: number | null;
@@ -153,8 +155,9 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
 
   args.push('-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn');
 
-  const width = scaledWidth(source.width, source.height, rendition.height);
-  const size = (w: string, h: string) => (width ? `${w}=${width}:${h}=${rendition.height}` : `${w}=-2:${h}=${rendition.height}`);
+  const frame = outputSize(source.width, source.height, rendition.size);
+  const size = (w: string, h: string) => `${w}=${frame.width ?? -2}:${h}=${frame.height}`;
+  const scaleTo = `${frame.width ?? -2}:${frame.height}`;
   const rate = ['-b:v', `${rendition.bitrate}k`, '-maxrate', `${rendition.maxrate}k`, '-bufsize', `${rendition.bufsize}k`];
 
   if (accel?.kind === 'vaapi') {
@@ -168,14 +171,11 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
       '-vf',
       accel.gpuScale
         ? `scale_cuda=${size('w', 'h')}:format=nv12`
-        : `scale=${width ? `${width}:${rendition.height}` : `-2:${rendition.height}`}:flags=bicubic,format=yuv420p`,
+        : `scale=${scaleTo}:flags=bicubic,format=yuv420p`,
     );
     args.push('-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', ...rate, '-profile:v', 'high', '-forced-idr', '1');
   } else {
-    const scale = width
-      ? `scale=${width}:${rendition.height}:flags=bicubic`
-      : `scale=-2:${rendition.height}:flags=bicubic`;
-    args.push('-vf', scale);
+    args.push('-vf', `scale=${scaleTo}:flags=bicubic`);
     args.push('-c:v', 'libx264');
     args.push('-preset', settings.transcode.preset || 'veryfast');
     args.push('-profile:v', 'high');
@@ -277,6 +277,7 @@ async function startJob(
     dir,
     startSegment,
     usedHw: accel !== null,
+    encoder: accel ? accel.kind : 'software',
     source,
     rendition,
     segmentSeconds,
@@ -476,6 +477,7 @@ export async function warmSegments(source: TranscodeSource, rendition: Rendition
       dir,
       startSegment: index,
       usedHw: accel !== null,
+      encoder: accel ? accel.kind : 'software',
       source,
       rendition,
       segmentSeconds,
@@ -507,6 +509,23 @@ export function activeJobs(): { video: string; rendition: string; startSegment: 
     startSegment: job.startSegment,
     hardware: job.usedHw,
   }));
+}
+
+/**
+ * What the encoder for one video and quality is doing, for the player's stats
+ * panel. `speed` is how many seconds of video it makes per second (2 means
+ * twice as fast as playback); null until it has been running long enough to tell.
+ */
+export function encodeStatus(
+  videoId: string,
+  renditionId: string,
+): { running: boolean; encoder: string | null; speed: number | null } {
+  const job = jobs.get(`${videoId}/${renditionId}`);
+  if (!job || job.exited) return { running: false, encoder: null, speed: null };
+  const made = currentHead(job.dir, job.startSegment) - job.startSegment + 1;
+  const elapsed = (Date.now() - job.startedAt) / 1000;
+  const speed = elapsed >= 2 && made > 0 ? (made * job.segmentSeconds) / elapsed : null;
+  return { running: true, encoder: job.encoder, speed };
 }
 
 /**

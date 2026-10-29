@@ -2301,6 +2301,53 @@ textarea.input {
   z-index: 7;
 }
 
+/* "Stats for nerds", over the top left of the picture. */
+.player-stats {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 80px);
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 34px 10px 12px;
+  font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  z-index: 5;
+}
+
+.player-stats dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.player-stats dt {
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+}
+
+.player-stats dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.player-stats-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: none;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .player-error {
   position: absolute;
   inset: 0;

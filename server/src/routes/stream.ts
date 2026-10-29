@@ -4,9 +4,9 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { getSettings, settingsFor } from '../settings.js';
 import { getVideo, parseSubtitles } from '../lib/videos.js';
-import { allowOriginal, findRendition, renditionsFor } from '../media/renditions.js';
+import { allowOriginal, findRendition, renditionsFor, shortSide } from '../media/renditions.js';
 import { masterPlaylist, segmentCountFor, variantPlaylist } from '../media/hls.js';
-import { ensureSegment, warmSegments, type TranscodeSource } from '../media/transcoder.js';
+import { encodeStatus, ensureSegment, warmSegments, type TranscodeSource } from '../media/transcoder.js';
 
 const CONTAINER_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -90,7 +90,7 @@ export function registerStreamRoutes(app: FastifyInstance): void {
     if (!row) return reply.code(404).send({ error: 'Video not found' });
     if (!row.duration) return reply.code(409).send({ error: 'Video duration is unknown — run a full rescan' });
 
-    const renditions = renditionsFor(row.height, settingsFor(request.user!.id).playback.maxQuality);
+    const renditions = renditionsFor(shortSide(row.width, row.height), settingsFor(request.user!.id).playback.maxQuality);
     reply.header('Content-Type', 'application/vnd.apple.mpegurl');
     reply.header('Cache-Control', 'no-cache');
     return reply.send(masterPlaylist({ width: row.width, height: row.height }, renditions));
@@ -168,6 +168,17 @@ export function registerStreamRoutes(app: FastifyInstance): void {
       index,
     ).catch((err) => request.log.warn(`warming ${row.id}/${rend.id} failed: ${err?.message ?? err}`));
     return { ok: true };
+  });
+
+  // What the encoder is doing, for the player's "Stats for nerds" panel.
+  app.get('/api/stream/:id/:rendition/status', async (request, reply) => {
+    const { id, rendition } = request.params as any;
+    const row = getVideo(request.user!, String(id));
+    if (!row) return reply.code(404).send({ error: 'Video not found' });
+    const rend = findRendition(String(rendition));
+    if (!rend) return reply.code(404).send({ error: 'Unknown quality' });
+    reply.header('Cache-Control', 'no-store');
+    return encodeStatus(row.id, rend.id);
   });
 
   // ---- sidecar subtitles, always served as WebVTT --------------------------
