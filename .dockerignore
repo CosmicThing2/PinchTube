@@ -1,6 +1,9 @@
 **/node_modules
 **/dist
 data
+config
+cache
+media
 .git
 *.log
 .env
