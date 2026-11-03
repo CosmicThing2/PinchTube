@@ -4,9 +4,9 @@
  * Everything PinchTube remembers lives in one SQLite file in the config
  * folder (config.ts says where): accounts and login sessions, settings, the
  * scanned library (channels and videos), watch progress, queues and
- * playlists. This file opens it, defines every table, and upgrades a
- * database made by an older version ("migrations"). The `user_version`
- * number stored in the file says which layout it already has.
+ * playlists. This file opens it and defines every table. The `user_version`
+ * number stored in the file says which layout it has, so a later version of
+ * PinchTube can tell when an existing database needs upgrading.
  *
  * Every other server file imports `db` from here to run its queries; the
  * library ones mostly live in lib/videos.ts, lib/playlists.ts and auth.ts.
@@ -26,32 +26,18 @@ db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
 
-/** The current table layout. Raise it whenever migrate() gains a new step. */
+/**
+ * The current table layout. Every public release so far has used 6.
+ *
+ * To change the layout later: update the tables below (so new databases get
+ * the new layout straight away), add a step to migrate() that upgrades an
+ * existing database, e.g. `if (current < 7) { ...ALTER TABLE... }`, and raise
+ * this number.
+ */
 const SCHEMA_VERSION = 6;
 
-/** Adds a column if it is missing — the migration path for an existing database. */
-function ensureColumn(table: string, column: string, definition: string): void {
-  if (!hasColumn(table, column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
-}
-
-/** Whether a table already has a column. */
-function hasColumn(table: string, column: string): boolean {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-  return columns.some((c) => c.name === column);
-}
-
-/**
- * Brings the database up to SCHEMA_VERSION: creates any missing tables, then
- * runs each upgrade step in order. Every step is safe to run twice.
- */
-export function migrate(): void {
-  const current = (db.pragma('user_version', { simple: true }) as number) ?? 0;
-  if (current >= SCHEMA_VERSION) return;
-
-  // The full current layout, for a brand-new database.
-  db.exec(`
+/** Every table and index, as a brand-new database gets them. */
+const SCHEMA = `
     CREATE TABLE IF NOT EXISTS users (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
       username       TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -194,129 +180,33 @@ export function migrate(): void {
       mtime     INTEGER NOT NULL,
       last_seen INTEGER NOT NULL
     );
-  `);
 
-  // v3: the CREATE above only helps a fresh database; existing ones get the
-  // columns bolted on.
-  ensureColumn('videos', 'youtube_id', 'TEXT');
-  ensureColumn('videos', 'chapters', 'TEXT');
-
-  // v4: multiple users. Everything that existed belonged to the one account,
-  // which becomes the first administrator and keeps its watch history, queue
-  // and settings.
-  db.transaction(() => {
-    ensureColumn('users', 'is_admin', 'INTEGER NOT NULL DEFAULT 0');
-    ensureColumn('users', 'all_channels', 'INTEGER NOT NULL DEFAULT 1');
-    ensureColumn('users', 'totp_secret', 'TEXT');
-    ensureColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
-    ensureColumn('users', 'totp_recovery', 'TEXT');
-    ensureColumn('users', 'totp_last_step', 'INTEGER');
-    ensureColumn('users', 'settings', 'TEXT');
-
-    db.exec(`UPDATE users SET is_admin = 1
-              WHERE id = (SELECT MIN(id) FROM users)
-                AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1)`);
-    const owner = (db.prepare('SELECT MIN(id) AS id FROM users').get() as { id: number | null }).id;
-
-    if (!hasColumn('progress', 'user_id')) {
-      db.exec(`
-        CREATE TABLE progress_v4 (
-          user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          video_id   TEXT NOT NULL,
-          position   REAL NOT NULL DEFAULT 0,
-          duration   REAL NOT NULL DEFAULT 0,
-          watched    INTEGER NOT NULL DEFAULT 0,
-          updated_at INTEGER NOT NULL,
-          PRIMARY KEY (user_id, video_id)
-        );
-      `);
-      if (owner !== null) {
-        db.prepare(
-          `INSERT INTO progress_v4 (user_id, video_id, position, duration, watched, updated_at)
-           SELECT ?, video_id, position, duration, watched, updated_at FROM progress`,
-        ).run(owner);
-      }
-      db.exec('DROP TABLE progress; ALTER TABLE progress_v4 RENAME TO progress;');
-    }
-
-    if (!hasColumn('queue', 'user_id')) {
-      db.exec(`
-        CREATE TABLE queue_v4 (
-          user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
-          position INTEGER NOT NULL,
-          added_at INTEGER NOT NULL,
-          PRIMARY KEY (user_id, video_id)
-        );
-      `);
-      if (owner !== null) {
-        db.prepare(
-          `INSERT INTO queue_v4 (user_id, video_id, position, added_at)
-           SELECT ?, video_id, position, added_at FROM queue`,
-        ).run(owner);
-      }
-      db.exec('DROP TABLE queue; ALTER TABLE queue_v4 RENAME TO queue;');
-    }
-
-    // The personal sections of the old single settings record move onto the
-    // owner's account; the library and transcoding sections stay global.
-    if (owner !== null) {
-      const row = db.prepare("SELECT value FROM settings WHERE key = 'app'").get() as
-        | { value: string }
-        | undefined;
-      const mine = db.prepare('SELECT settings FROM users WHERE id = ?').get(owner) as {
-        settings: string | null;
-      };
-      if (row && !mine.settings) {
-        try {
-          const old = JSON.parse(row.value);
-          const personal = { appearance: old.appearance, home: old.home, playback: old.playback, ui: old.ui };
-          db.prepare('UPDATE users SET settings = ? WHERE id = ?').run(JSON.stringify(personal), owner);
-        } catch {
-          /* unreadable — the owner simply starts from the defaults */
-        }
-      }
-    }
-  })();
-
-  // v5: a playlist's quality used to be one setting on the playlist itself,
-  // forced on everyone who played it. It is now each viewer's own, so the
-  // owner's existing choice carries over as the owner's preference. The old
-  // column is left in place, unused.
-  ensureColumn('playlists', 'strict', 'INTEGER NOT NULL DEFAULT 1');
-  if (hasColumn('playlists', 'quality')) {
-    db.exec(`INSERT OR IGNORE INTO playlist_prefs (user_id, playlist_id, quality)
-             SELECT user_id, id, quality FROM playlists WHERE quality <> 'auto'`);
-  }
-
-  // v6: "last active" used to be worked out from the newest session, so it
-  // read "never" once someone signed out or their sessions were cleared. It is
-  // now kept on the account; existing accounts start from the latest trace of
-  // activity there is.
-  ensureColumn('users', 'last_active', 'INTEGER');
-  db.exec(`UPDATE users SET last_active = (
-             SELECT MAX(t) FROM (
-               SELECT MAX(created_at) AS t FROM sessions WHERE user_id = users.id
-               UNION ALL SELECT MAX(updated_at) FROM progress WHERE user_id = users.id
-               UNION ALL SELECT MAX(added_at) FROM queue WHERE user_id = users.id
-               UNION ALL SELECT MAX(updated_at) FROM playlists WHERE user_id = users.id
-             )
-           )
-           WHERE last_active IS NULL`);
-
-  // Indexes that speed up the common lookups (replacing older, single-user ones).
-  db.exec(`
-    DROP INDEX IF EXISTS idx_progress_updated;
-    DROP INDEX IF EXISTS idx_queue_position;
     CREATE INDEX IF NOT EXISTS idx_progress_user_updated ON progress(user_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_queue_user_position ON queue(user_id, position);
     CREATE INDEX IF NOT EXISTS idx_playlist_items_position ON playlist_items(playlist_id, position);
-  `);
+`;
 
-  db.pragma(`user_version = ${SCHEMA_VERSION}`);
+/** Creates the tables in a new database, or upgrades one made by an older version. */
+export function migrate(): void {
+  const current = (db.pragma('user_version', { simple: true }) as number) ?? 0;
+  if (current >= SCHEMA_VERSION) return;
+
+  if (current === 0) {
+    db.transaction(() => {
+      db.exec(SCHEMA);
+      db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    })();
+    return;
+  }
+
+  // Layouts 1 to 5 only ever existed before the first release.
+  throw new Error(
+    `The database in ${paths.db} was made by a pre-release version of PinchTube (layout ${current}) ` +
+      'and cannot be upgraded. Move it out of the config folder to start afresh.',
+  );
 }
 
 // Some modules build prepared statements at import time, which happens before
 // anything in index.ts runs — so the schema has to be in place right here
-// rather than later during startup. migrate() is idempotent.
+// rather than later during startup.
 migrate();

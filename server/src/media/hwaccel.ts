@@ -131,7 +131,7 @@ function explain(kind: AccelKind, raw: string): string {
     return 'No NVIDIA GPU is available to the container';
   }
   if (kind === 'qsv') return 'No Intel GPU with Quick Sync was found';
-  if (/permission denied/i.test(raw)) return 'The container is not allowed to use the GPU (check RENDER_GID)';
+  if (/permission denied/i.test(raw)) return 'The container is not allowed to use the GPU (check the group_add number in the compose file)';
   if (/failed to initialise vaapi|no va display|vaInitialize failed|cannot open/i.test(raw)) {
     return 'The GPU could not be opened';
   }

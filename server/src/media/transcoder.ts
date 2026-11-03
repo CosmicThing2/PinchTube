@@ -605,11 +605,3 @@ export async function resetTranscodes(): Promise<void> {
     await clearTranscodeCache();
   });
 }
-
-/** Drops cached segments for a video, e.g. after its file changed on disk. */
-export async function invalidateVideo(videoId: string): Promise<void> {
-  for (const job of Array.from(jobs.values())) {
-    if (job.videoId === videoId) await stopJob(job, 'invalidated');
-  }
-  await fsp.rm(path.join(paths.transcodeCache, videoId), { recursive: true, force: true });
-}
