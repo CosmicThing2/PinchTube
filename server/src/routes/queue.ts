@@ -6,7 +6,8 @@
  *   DELETE /api/queue/:videoId     remove one video
  *   POST   /api/queue/clear        empty it
  *   POST   /api/queue/move         nudge a video up or down one place
- *   POST   /api/queue/order        put it in a given order (drag and drop)
+ *   POST   /api/queue/order        put it in a given order (not used by the
+ *                                  web app at the moment, which uses /move)
  * Every change replies with the whole queue so the web app can redraw it.
  * The database work is in lib/videos.ts; the web side is
  * web/src/lib/queue-context.tsx and pages/Queue.tsx.

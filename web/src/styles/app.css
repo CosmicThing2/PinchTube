@@ -1,3 +1,30 @@
+/*
+ * app.css — every style in the web app, in one file.
+ *
+ * Plain CSS, loaded once by main.tsx. Components refer to these classes by
+ * name (className="..."). Colours, sizes and spacing are CSS variables
+ * ("tokens") defined at the top: light theme by default, the dark theme
+ * when the system asks for it or data-theme="dark" is set on the page
+ * (lib/app-context.tsx), and the user's accent and SponsorBlock colours are
+ * swapped in at runtime (lib/accent.ts). Phone layouts are handled with
+ * @media rules next to the desktop ones they adjust.
+ *
+ * Sections, in order:
+ *   tokens, reset           variables, then browser defaults evened out
+ *   shell                   header, search, sidebar / drawer, phone tab bar
+ *   pieces                  home rails, grids, video and channel cards,
+ *                           channel header, toolbar, selects, forms, panels,
+ *                           empty and loading states, sign-in screen
+ *   watch                   watch page, theater mode, queue panel, chapters
+ *   player                  the player, its controls, progress bar, menus,
+ *                           Stats for nerds and subtitles
+ *   queue, size charts      the queue page; the Settings size charts
+ *   utilities and settings  small helpers, settings rows, colour picker,
+ *                           drag-to-reorder lists
+ *   buttons, dialog, lists  buttons, pop-up dialogs, tick lists
+ *   playlists, settings     queue/playlists switch, playlist pages, 2FA and users
+ */
+
 /* ---------------------------------------------------------------- tokens */
 :root {
   --accent: #ff0033;
@@ -2829,6 +2856,7 @@ a.viz-row:focus-visible .viz-label {
   color: var(--text-dim);
 }
 
+/* pager (previous / next page) */
 .pager {
   display: flex;
   gap: 10px;
@@ -2837,6 +2865,7 @@ a.viz-row:focus-visible .viz-label {
   margin-top: 26px;
 }
 
+/* settings rows: a label and hint on the left, a control on the right ------- */
 .settings-row {
   display: flex;
   align-items: center;
@@ -2870,6 +2899,7 @@ a.viz-row:focus-visible .viz-label {
   pointer-events: none;
 }
 
+/* colour picker (Settings → Interface) --------------------------------------- */
 .accent-picker {
   display: flex;
   flex-wrap: wrap;
@@ -2949,6 +2979,7 @@ a.viz-row:focus-visible .viz-label {
   }
 }
 
+/* home row editor and drag-to-reorder lists ---------------------------------- */
 .homerow {
   display: flex;
   align-items: center;

@@ -1,3 +1,13 @@
+/*
+ * UsersPanel.tsx — the "Users" section of Settings, for administrators.
+ *
+ * Lists every account (role, channel access, last activity, whether 2FA is
+ * on). Clicking one opens an editor to rename it, set a new password, make it
+ * an admin, limit it to chosen channels, reset its 2FA, sign it out
+ * everywhere, or delete it; "Add user" uses the same editor. Talks to
+ * /api/users (server/src/routes/users.ts). Shown by pages/Settings.tsx.
+ */
+
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, type ManagedUser } from '../lib/api';
 import { useApp } from '../lib/app-context';
@@ -5,11 +15,13 @@ import { Dialog, Spinner } from './Common';
 import { IconPlus, IconShield } from './Icons';
 import { formatRelative } from '../lib/format';
 
+/** A channel, for the access picker. */
 interface ChannelName {
   id: string;
   title: string;
 }
 
+/** What every /api/users call replies with. */
 interface UsersResponse {
   items: ManagedUser[];
   channels?: ChannelName[];
@@ -31,6 +43,7 @@ function ChannelPicker({
     return needle ? channels.filter((c) => c.title.toLowerCase().includes(needle)) : channels;
   }, [channels, filter]);
 
+  /** "Select all" / "Select none", applied to the channels the filter shows. */
   const setAll = (on: boolean) => {
     const next = new Set(selected);
     for (const channel of shown) {
@@ -83,6 +96,7 @@ function ChannelPicker({
   );
 }
 
+/** An on/off switch. */
 function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className={disabled ? 'switch is-disabled' : 'switch'}>
@@ -115,6 +129,7 @@ function UserEditor({
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  /** Runs one change, takes the updated user list, and usually closes the editor. */
   const send = async (work: () => Promise<UsersResponse>, close = true) => {
     setBusy(true);
     setError(null);
@@ -128,6 +143,7 @@ function UserEditor({
     }
   };
 
+  /** Saves the form: creates the user, or updates the one being edited. */
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const body: Record<string, unknown> = {
@@ -212,6 +228,7 @@ function UserEditor({
         </div>
       </form>
 
+      {/* Only when editing: reset 2FA, sign out everywhere, delete */}
       {user ? (
         <div className="danger-zone">
           {user.twoFactor ? (
@@ -284,11 +301,13 @@ export function UsersPanel() {
   const [editing, setEditing] = useState<ManagedUser | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /** Takes the user (and channel) list from a reply. */
   const apply = (data: UsersResponse) => {
     setUsers(data.items);
     if (data.channels) setChannels(data.channels);
   };
 
+  // Load the list once.
   useEffect(() => {
     api
       .get<UsersResponse>('/api/users')

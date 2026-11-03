@@ -1,3 +1,32 @@
+/*
+ * Player.tsx — the video player.
+ *
+ * A YouTube-style player built around the browser's own <video> element. It
+ * plays one of three ways:
+ *   - Original: the file itself (GET /api/stream/:id/original)
+ *   - converted qualities over HLS, using the hls.js library (or the
+ *     browser's own HLS support on Safari), with the server making segments
+ *     on demand (server/src/routes/stream.ts and media/transcoder.ts)
+ *   - audio only
+ * Which one is chosen depends on the quality menu, the default quality
+ * settings, data saver, and a queue's or playlist's own quality.
+ *
+ * Around that it provides:
+ *   - controls: play/pause, previous/next, volume, time and chapter, quality,
+ *     speed, subtitles, picture-in-picture, theater mode, fullscreen
+ *   - a progress bar split into chapters, with SponsorBlock segments tinted,
+ *     plus a skip button or automatic skipping (with Undo)
+ *   - asking the server to prepare the video after a sponsor segment before
+ *     it is skipped
+ *   - keyboard shortcuts, double-tap to seek, swipe gestures for volume and
+ *     brightness in fullscreen, and lock-screen / notification controls
+ *   - an optional fade-out on pause, resuming where you left off, and
+ *     saving progress every few seconds through the onProgress callback
+ *   - the "Stats for nerds" panel (StatsPanel.tsx)
+ * The watch page (pages/Watch.tsx) creates it; it can tell the page what
+ * time it is at and when the video ends, and the page can make it seek.
+ */
+
 import {
   forwardRef,
   useCallback,
@@ -33,8 +62,13 @@ import {
   IconVolumeMute,
 } from '../components/Icons';
 
+// ---- settings and types -----------------------------------------------------
+
+/** Playback speeds in the speed menu. */
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+/** How long the controls stay visible after the last touch or mouse move. */
 const CONTROL_HIDE_MS = 3000;
+/** How often the position is saved while playing. */
 const PROGRESS_INTERVAL_MS = 10_000;
 /** How far ahead of a sponsor segment to ask the server to prepare where a skip lands. */
 const WARM_AHEAD_SECONDS = 30;
@@ -47,8 +81,10 @@ const CUE_LINE = -3;
 const CUE_MIN_PX = 16;
 const CUE_MAX_PX = 56;
 
+/** Which pop-up menu is open, if any. */
 type MenuTab = null | 'root' | 'quality' | 'speed' | 'captions';
 
+/** What the watch page passes in. */
 interface Props {
   video: VideoDto;
   playback: WatchPayload['playback'];
@@ -71,6 +107,7 @@ interface Props {
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
+/** The chapter a moment falls in (on the already-flattened list). */
 function chapterAt(chapters: Chapter[], seconds: number): Chapter | null {
   for (const chapter of chapters) {
     if (seconds >= chapter.start && seconds < chapter.end) return chapter;
@@ -78,6 +115,7 @@ function chapterAt(chapters: Chapter[], seconds: number): Chapter | null {
   return null;
 }
 
+/** What the watch page can ask of the player. */
 export interface PlayerHandle {
   seekTo: (seconds: number) => void;
   /** The last real playback position, still valid while the player is unmounting. */
@@ -98,6 +136,7 @@ let sessionBrightness = 1;
 
 type GestureKind = 'volume' | 'brightness';
 
+/** A finger on the picture, followed to tell a tap from a swipe. */
 interface TouchTrack {
   id: number;
   x: number;
@@ -108,6 +147,7 @@ interface TouchTrack {
   height: number;
 }
 
+/** Lock-screen / notification buttons the player may handle. */
 const MEDIA_SESSION_ACTIONS = [
   'play',
   'pause',
@@ -161,6 +201,8 @@ function preferredFor(
   const wanted = dataSaver ? playback.defaults.cellular : forced || playback.defaults.wifi;
   return resolveQuality(wanted || 'auto', playback);
 }
+
+// ---- the player -----------------------------------------------------------------
 
 export const Player = forwardRef<PlayerHandle, Props>(function Player(
   {
@@ -252,6 +294,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         ? 'hls'
         : `native:${quality}`;
 
+  /** A short message over the picture, e.g. after switching quality automatically. */
   const showToast = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast((value) => (value === message ? null : value)), 2200);
@@ -293,6 +336,8 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   }, []);
 
   // ---------------------------------------------------------------- source --
+  // Sets up the <video> element's source for the current kind of playback
+  // (file, hls.js, native HLS or audio), resuming at the right position.
   useEffect(() => {
     const element = videoRef.current;
     if (!element) return;
@@ -419,6 +464,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   }
 
   // ------------------------------------------------------------ media events
+  // Keeps the player's state (time, buffering, playing, volume...) in step with the <video> element.
   useEffect(() => {
     const element = videoRef.current;
     if (!element) return;
@@ -498,6 +544,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   }, [dragging, isOriginal, onEnded, showToast, onTimeProp]);
 
   // ------------------------------------------------------------ progress ----
+  // Saves the position every few seconds while playing, and when leaving the page.
   const report = useCallback(() => {
     const position = lastTimeRef.current;
     const total = lastDurationRef.current;
@@ -544,6 +591,8 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   }, [captions, video.id, sourceKey, liftCues]);
 
   // ---------------------------------------------------------- interactions --
+
+  /** Shows the controls, and hides them again after a few seconds of playing. */
   const armHide = useCallback(() => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
     setControlsVisible(true);
@@ -647,6 +696,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     };
   }, [cancelFade, playback.fadeOutSeconds, showFlash]);
 
+  /** Play or pause. */
   const togglePlay = useCallback(() => {
     const element = videoRef.current;
     if (!element) return;
@@ -658,6 +708,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   // Never leave the element half-faded if the component goes away mid-fade.
   useEffect(() => () => cancelFade(true), [cancelFade]);
 
+  /** Jumps forwards or backwards by some seconds. */
   const seekBy = useCallback(
     (delta: number) => {
       const element = videoRef.current;
@@ -672,6 +723,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     [armHide],
   );
 
+  /** Jumps to a time. */
   const seekTo = useCallback((seconds: number) => {
     const element = videoRef.current;
     if (!element) return;
@@ -680,6 +732,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     lastTimeRef.current = element.currentTime;
   }, []);
 
+  /** Enters or leaves fullscreen. */
   const toggleFullscreen = useCallback(() => {
     const container = containerRef.current;
     const element = videoRef.current as any;
@@ -695,6 +748,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     }
   }, []);
 
+  // Follows fullscreen changes, however they were made (button, Esc, phone rotation...).
   useEffect(() => {
     let timer = 0;
     const onChange = () => {
@@ -777,6 +831,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     };
   }, [video, playback.seekStep, seekBy, seekTo, play, pause, onPrevious, onNext]);
 
+  // Tells the lock screen whether we are playing.
   useEffect(() => {
     const session = (navigator as any).mediaSession;
     if (session) session.playbackState = playing ? 'playing' : 'paused';
@@ -883,6 +938,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   const activeSponsor =
     !autoSkip && playback.sponsorSkipPrompt !== false && currentChapter?.kind === 'sponsor' ? currentChapter : null;
 
+  /** Jumps to the end of a sponsor segment. */
   const skipSponsor = (segment: Chapter) => {
     const element = videoRef.current;
     if (!element) return;
@@ -953,6 +1009,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     return quality !== 'auto' && quality !== 'original' ? quality : null;
   }
 
+  /** "Undo" after an automatic skip: goes back and lets that segment play. */
   const unskipSponsor = (segment: Chapter) => {
     keepSponsorRef.current = segment.start;
     setSkipped(null);
@@ -963,6 +1020,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   // Scrub bar dragging (pointer events cover mouse and touch alike).
   const scrubRef = useRef<HTMLDivElement>(null);
 
+  /** The video time under a pointer position on the bar. */
   const positionFromEvent = (clientX: number): number => {
     const rect = scrubRef.current?.getBoundingClientRect();
     if (!rect || !duration) return 0;
@@ -978,6 +1036,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     setCurrent(next);
   };
 
+  /** Hovering shows the time and chapter there; dragging moves the playhead. */
   const onScrubMove = (event: ReactPointerEvent) => {
     const time = positionFromEvent(event.clientX);
     const rect = scrubRef.current?.getBoundingClientRect();
@@ -992,6 +1051,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     if (dragging) setCurrent(time);
   };
 
+  /** Letting go of the bar seeks there. */
   const onScrubUp = (event: ReactPointerEvent) => {
     if (!dragging) return;
     const next = positionFromEvent(event.clientX);
@@ -1020,6 +1080,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     }
   };
 
+  /** Which half of the picture a touch is on. */
   const sideOf = (clientX: number): 'left' | 'right' => {
     const rect = containerRef.current?.getBoundingClientRect();
     return rect && clientX - rect.left < rect.width / 2 ? 'left' : 'right';
@@ -1053,6 +1114,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     };
   };
 
+  /** Sets the volume or brightness from a swipe. */
   const applyGesture = (kind: GestureKind, value: number) => {
     if (kind === 'volume') {
       const element = videoRef.current;
@@ -1131,6 +1193,8 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   };
 
   // ---------------------------------------------------------------- render --
+
+  // The quality button's text, e.g. "Auto (1080p)".
   const originalSize = shortSide(playback.original.width, playback.original.height);
   const qualityLabel =
     quality === 'auto'
@@ -1146,6 +1210,8 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   const playedPercent = duration ? (current / duration) * 100 : 0;
   const bufferedEnd = buffered;
 
+  // Layers, bottom to top: the video, overlays (big button, sponsor skip,
+  // gesture display, flashes, stats, messages), the control bar, then menus.
   return (
     <div
       ref={containerRef}
@@ -1236,6 +1302,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         </div>
       ) : null}
 
+      {/* The volume / brightness level while swiping */}
       {gestureHud ? (
         <div className={`gesture-hud ${gestureHud.kind === 'volume' ? 'right' : 'left'}`} aria-hidden="true">
           <span className="gesture-icon">
@@ -1261,6 +1328,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         </div>
       ) : null}
 
+      {/* Stats for nerds */}
       {statsOpen ? (
         <StatsPanel
           videoRef={videoRef}
@@ -1278,6 +1346,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       {toast ? <div className="player-toast">{toast}</div> : null}
       {error ? <div className="player-error">{error}</div> : null}
 
+      {/* ---- the control bar: progress bar, then the buttons ---- */}
       <div className={`player-overlay${controlsVisible || !playing ? ' visible' : ''}`}>
         <div className="player-controls">
           <div
@@ -1341,6 +1410,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
             ) : null}
           </div>
 
+          {/* Buttons: previous, play, next, volume, time and chapter, then the right-hand group */}
           <div className="player-buttons">
             {trackButtons ? (
               <button
@@ -1466,6 +1536,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         </div>
       </div>
 
+      {/* ---- menus: quality, speed (and Stats for nerds), subtitles ---- */}
       {menu === 'quality' ? (
         <div className="player-menu">
           <div className="menu-head">Quality</div>
@@ -1559,6 +1630,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     </div>
   );
 
+  /** Changes quality, carrying on from the same point (and playing if it was). */
   function switchQuality(next: string) {
     const element = videoRef.current;
     if (element && element.currentTime > 0) resumeRef.current = element.currentTime;
@@ -1571,6 +1643,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   }
 });
 
+/** One choice in a player menu, ticked when selected. */
 function MenuItem({
   label,
   hint,

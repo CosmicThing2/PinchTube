@@ -1,3 +1,13 @@
+/*
+ * VideoBrowser.tsx — a sortable, filterable, paged grid of videos.
+ *
+ * The body of the All videos and Search pages (pages/Videos.tsx) and of a
+ * channel's page (pages/Channels.tsx). It has a sort menu, a watched /
+ * unwatched filter and page buttons, and keeps those choices in the address
+ * bar (?sort=…&watched=…&page=…), so Back and shared links work. Videos come
+ * from GET /api/videos.
+ */
+
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, type VideoDto } from '../lib/api';
@@ -16,6 +26,7 @@ const WATCHED_LABELS: Record<string, string> = {
   watched: 'Watched only',
 };
 
+/** The choices in the sort menu. */
 const SORT_OPTIONS = [
   { value: 'date_desc', label: 'Newest first' },
   { value: 'date_asc', label: 'Oldest first' },
@@ -45,11 +56,13 @@ export function VideoBrowser({
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Current choices from the address bar, falling back to the user's defaults.
   const sort = params.get('sort') ?? settings?.ui.defaultSort ?? 'date_desc';
   const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
   const watched = params.get('watched') ?? (settings?.ui.hideWatched ? 'unwatched' : 'all');
   const pageSize = settings?.ui.pageSize ?? 48;
 
+  /** Changes one choice in the address bar; a new sort or filter goes back to page 1. */
   const setParam = (key: string, value: string, resetPage = true) => {
     const next = new URLSearchParams(params);
     next.set(key, value);
@@ -57,6 +70,7 @@ export function VideoBrowser({
     setParams(next, { replace: false });
   };
 
+  // Fetch the page of videos whenever a choice changes.
   useEffect(() => {
     let cancelled = false;
     setItems(null);
@@ -89,6 +103,7 @@ export function VideoBrowser({
 
   return (
     <div>
+      {/* Sort menu, watched filter, and the total */}
       <div className="toolbar">
         <Select
           className="chip"
@@ -126,6 +141,7 @@ export function VideoBrowser({
 
       {error ? <div className="notice error">{error}</div> : null}
 
+      {/* The grid, a loading placeholder, or an empty message */}
       {!items ? (
         <SkeletonGrid count={12} />
       ) : items.length === 0 ? (
@@ -138,6 +154,7 @@ export function VideoBrowser({
         </div>
       )}
 
+      {/* Previous / Next page */}
       {lastPage > 1 ? (
         <div className="pager">
           <button

@@ -1,3 +1,13 @@
+/*
+ * Queue.tsx — the play queue page (/queue).
+ *
+ * Lists the queue with buttons to move videos up and down or remove them,
+ * plus "Play all", "Add videos" (turns on queue mode and goes to the home
+ * page so videos can be tapped to add), "Clear queue", and the quality every
+ * queued video plays at. The queue itself lives in lib/queue-context.tsx;
+ * playing it happens on the watch page (/watch/:id?queue=1).
+ */
+
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueue } from '../lib/queue-context';
 import { useApp } from '../lib/app-context';
@@ -7,6 +17,7 @@ import { formatCount, formatRelative } from '../lib/format';
 import { LibrarySwitch } from '../components/LibrarySwitch';
 import { IconChevronDown, IconChevronUp, IconClose, IconPlay } from '../components/Icons';
 
+/** The choices for the queue's quality. */
 const QUEUE_QUALITY_OPTIONS = [
   { value: 'auto', label: 'Auto (adapt to connection speed)' },
   { value: 'original', label: 'Original' },
@@ -42,6 +53,7 @@ export function Queue() {
       <LibrarySwitch current="queue" />
       <h1 className="page-title">Play queue</h1>
 
+      {/* Play all, Add videos, Clear queue, and the count */}
       <div className="toolbar">
         <button
           className="btn primary"
@@ -65,6 +77,7 @@ export function Queue() {
         </span>
       </div>
 
+      {/* The queue's quality, saved as a personal setting */}
       <div className="panel">
         <h2>Quality for the queue</h2>
         <p className="panel-sub">
@@ -91,6 +104,7 @@ export function Queue() {
           }
         />
       ) : (
+        // One row per queued video: move up/down, number, thumbnail, title, remove.
         <div>
           {items.map((video, index) => (
             <div className="queue-item" key={video.id}>

@@ -1,12 +1,25 @@
+/*
+ * sw.js — the service worker, which lets PinchTube be installed as an app.
+ *
+ * A service worker is a small script the browser runs alongside the site.
+ * This one keeps a copy of the app's own files so the app opens quickly
+ * (and shows its shell even when offline). It never stores API replies,
+ * videos or artwork. Registered by web/src/main.tsx, which browsers only
+ * allow over HTTPS. Raise the CACHE number when the caching rules change, so
+ * the old copy is thrown away.
+ */
+
 // Minimal app-shell cache. Only registers on a secure origin, so it stays dormant
 // until the site is served over HTTPS (e.g. once Caddy is in front of it).
 const CACHE = 'pinchtube-shell-v4';
 
+// On install: cache the start page and manifest, and take over straight away.
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/', '/manifest.webmanifest'])));
 });
 
+// On activate: delete caches left by older versions.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))),
@@ -14,6 +27,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Every request the page makes passes through here.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;

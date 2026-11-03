@@ -1,6 +1,18 @@
+/*
+ * playlist-playback.ts — playing through a playlist on the watch page.
+ *
+ * When a video is opened from a playlist (/watch/:id?list=12), the watch page
+ * uses usePlaylistPlayback() to load that playlist and work out what plays
+ * next, with shuffle and loop switches remembered per playlist in this
+ * browser. It mirrors how lib/queue-context.tsx handles the queue. Used by
+ * pages/Watch.tsx and components/PlaylistPanel.tsx; pages/Playlist.tsx uses
+ * setPlaylistShuffle() for its "Shuffle" button.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type PlaylistDto, type VideoDto } from './api';
 
+/** What GET /api/playlists/:id returns. */
 export interface PlaylistResponse {
   playlist: PlaylistDto;
   items: VideoDto[];
@@ -11,6 +23,7 @@ export interface PlaylistResponse {
 // to be listening here, not something about the list itself.
 const key = (id: number, what: string) => `ytm-playlist-${id}-${what}`;
 
+// Small localStorage helpers that cope with private browsing.
 function readFlag(name: string): boolean {
   try {
     return localStorage.getItem(name) === '1';
@@ -62,6 +75,7 @@ function applyOrder(items: VideoDto[], order: string[]): VideoDto[] {
   return out;
 }
 
+/** Turns shuffle on or off for a playlist, making a fresh random order when turned on. */
 export function setPlaylistShuffle(id: number, items: VideoDto[], on: boolean, firstId?: string): void {
   write(key(id, 'shuffle'), on ? '1' : '0');
   if (on) write(key(id, 'order'), JSON.stringify(shuffledIds(items, firstId)));
@@ -79,6 +93,7 @@ export function usePlaylistPlayback(listId: number | null) {
   const [loop, setLoop] = useState(false);
   const [order, setOrder] = useState<string[]>([]);
 
+  // Load the playlist, and its remembered switches, whenever it changes.
   useEffect(() => {
     setData(null);
     setError(null);

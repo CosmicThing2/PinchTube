@@ -1,3 +1,16 @@
+/*
+ * AppShell.tsx — the frame around every page once signed in.
+ *
+ * Draws the parts that stay put while pages change (main.tsx puts each page
+ * inside it):
+ *   - the header: menu button, logo, search box, and buttons for queue
+ *     mode, data saver and light/dark theme
+ *   - the side menu on a wide screen (a slide-out drawer in theater mode)
+ *   - the bottom tab bar on a phone
+ * Also applies layout-wide classes, such as the card size setting and
+ * theater mode on the watch page, which styles/app.css responds to.
+ */
+
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../lib/app-context';
@@ -21,10 +34,12 @@ import {
 } from './Icons';
 import { LogoMark } from './Logo';
 
+/** The logo, sized for the header. */
 function BrandMark() {
   return <LogoMark className="brand-mark" />;
 }
 
+/** The side menu's links. */
 const NAV = [
   { to: '/', label: 'Home', Icon: IconHome, end: true },
   { to: '/videos', label: 'All videos', Icon: IconGrid, end: false },
@@ -74,6 +89,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setNavOpen(false);
   }, [location.pathname]);
 
+  // Escape closes the drawer.
   useEffect(() => {
     if (!navOpen) return;
     const onKey = (event: KeyboardEvent) => {
@@ -95,6 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setQuery(location.pathname === '/search' ? (params.get('q') ?? '') : '');
   }, [location.pathname, params]);
 
+  /** Searching goes to the search page with the words in the address. */
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const trimmed = query.trim();
@@ -109,6 +126,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         drawerArmed && settings?.appearance.animateMenu !== false ? ' drawer-animated' : ''
       }`}
     >
+      {/* ---- header ---- */}
       <header className="header">
         <button
           className="icon-btn burger"
@@ -149,6 +167,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : null}
         </form>
 
+        {/* Queue mode: tapping videos adds them to the queue */}
         <button
           className={queueMode ? 'icon-btn active' : 'icon-btn'}
           onClick={() => {
@@ -168,6 +187,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <IconQueueAdd />
         </button>
 
+        {/* Data saver: plays at the mobile-data default quality (this device only) */}
         <button
           className={dataSaver ? 'icon-btn active' : 'icon-btn'}
           onClick={() => setDataSaver(!dataSaver)}
@@ -178,6 +198,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <IconDataSaver />
         </button>
 
+        {/* Light / dark theme */}
         <button
           className="icon-btn"
           onClick={() => setTheme(nextTheme)}
@@ -193,6 +214,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className={navOpen ? 'nav-scrim open' : 'nav-scrim'} onClick={() => setNavOpen(false)} />
         ) : null}
 
+        {/* ---- side menu (a drawer in theater mode) ---- */}
         <nav className={navOpen ? 'sidebar open' : 'sidebar'}>
           <div className="drawer-head">
             <button className="icon-btn" onClick={() => setNavOpen(false)} aria-label="Close menu">
@@ -224,9 +246,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </nav>
 
+        {/* ---- the current page ---- */}
         <main className="main">{children}</main>
       </div>
 
+      {/* ---- phone tab bar ---- */}
       <nav className="tabbar">
         {TABS.map(({ to, label, Icon, match }) => (
           <Link key={to} to={to} className={match(location.pathname) ? 'tab active' : 'tab'}>

@@ -1,6 +1,15 @@
+/*
+ * Videos.tsx — the "All videos" page (/videos) and search results (/search?q=…).
+ *
+ * Both are a heading over components/VideoBrowser.tsx, which does the
+ * sorting, filtering and paging. The search box itself is in the header
+ * (components/AppShell.tsx).
+ */
+
 import { useSearchParams } from 'react-router-dom';
 import { VideoBrowser } from '../components/VideoBrowser';
 
+/** Every video in the library the user may see. */
 export function Videos() {
   return (
     <div>
@@ -10,6 +19,7 @@ export function Videos() {
   );
 }
 
+/** Videos whose title, description or channel name match the search words. */
 export function Search() {
   const [params] = useSearchParams();
   const query = params.get('q') ?? '';

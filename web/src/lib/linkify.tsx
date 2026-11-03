@@ -1,3 +1,13 @@
+/*
+ * linkify.tsx — makes links and timestamps clickable in video descriptions.
+ *
+ * Takes a description as plain text and returns it as React pieces, with web
+ * addresses turned into links (opening in a new tab) and timestamps such as
+ * 1:23 turned into buttons that jump the video there. Because the result is
+ * built from React elements rather than HTML, nothing in a description can
+ * inject markup or scripts. Used by pages/Watch.tsx.
+ */
+
 import type { ReactNode } from 'react';
 
 // One pass over the text, matching either a URL or a timestamp. Keeping them in
@@ -8,6 +18,7 @@ import type { ReactNode } from 'react';
 const TOKEN_PATTERN =
   /((?:https?:\/\/|www\.)[^\s<>"']+[^\s<>"'.,!?;:)\]}])|(\b\d{1,2}:\d{2}(?::\d{2})?\b)/gi;
 
+/** The video's length, and what to do when a timestamp is clicked. */
 export interface LinkifyOptions {
   /** Runtime in seconds; timestamps beyond it are left as plain text. */
   duration?: number | null;
@@ -53,6 +64,7 @@ export function linkify(text: string, options: LinkifyOptions = {}): ReactNode[]
 
   TOKEN_PATTERN.lastIndex = 0;
 
+  // Walk through each URL or timestamp found, keeping the plain text between them.
   while ((match = TOKEN_PATTERN.exec(text)) !== null) {
     const [raw, url, stamp] = match;
     const start = match.index;

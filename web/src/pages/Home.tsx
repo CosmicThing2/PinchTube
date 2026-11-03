@@ -1,3 +1,12 @@
+/*
+ * Home.tsx — the home page (/).
+ *
+ * Fetches the user's home rows from GET /api/home (Continue watching,
+ * Recently added, Rediscover, and one row per channel, as set up under
+ * Settings → Home) and draws each as a scrolling row
+ * (components/VideoRail.tsx). An empty library gets a pointer to Settings.
+ */
+
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type HomeRowDto } from '../lib/api';
@@ -8,6 +17,7 @@ export function Home() {
   const [rows, setRows] = useState<HomeRowDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Load the rows once.
   useEffect(() => {
     let cancelled = false;
     api

@@ -1,16 +1,23 @@
+/*
+ * StatsPanel.tsx — the player's "Stats for nerds" panel.
+ *
+ * What the player and the server are doing right now, for working out why a
+ * video pauses to buffer. The numbers answer three questions: is enough
+ * saved up ahead (buffer), is data arriving faster than it plays (loading),
+ * and for converted qualities, is the time going on the server encoding a
+ * segment or on the network carrying it.
+ *
+ * Opened from the player's settings menu (Player.tsx). It reads the <video>
+ * element and hls.js directly, and asks the server for the encoder's status
+ * (GET /api/stream/:id/:quality/status, server/src/media/transcoder.ts).
+ */
+
 import { useEffect, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import Hls from 'hls.js';
 import { api } from '../lib/api';
 import { formatBytes } from '../lib/format';
 
-/*
- * "Stats for nerds": what the player and the server are doing right now, for
- * working out why a video pauses to buffer. The numbers answer three
- * questions: is enough saved up ahead (buffer), is data arriving faster than
- * it plays (loading), and for converted qualities, is the time going on the
- * server encoding a segment or on the network carrying it.
- */
-
+/** What the player passes in. */
 interface Props {
   videoRef: RefObject<HTMLVideoElement>;
   hlsRef: MutableRefObject<Hls | null>;
@@ -27,6 +34,7 @@ interface Props {
   onClose: () => void;
 }
 
+/** Timings of one downloaded segment. */
 interface Segment {
   bytes: number;
   /** From asking to the first byte: the server finding or encoding it. */
@@ -35,6 +43,7 @@ interface Segment {
   transferMs: number;
 }
 
+/** The server's encoder status. */
 interface EncodeStatus {
   running: boolean;
   encoder: string | null;
@@ -46,6 +55,7 @@ const RATE_WINDOW_MS = 6000;
 const SEGMENTS_KEPT = 6;
 const STATUS_POLL_MS = 2000;
 
+/** Readable names for the encoder kinds. */
 const ENCODER_NAMES: Record<string, string> = {
   vaapi: 'Graphics card (VA-API)',
   qsv: 'Graphics card (Quick Sync)',
@@ -166,6 +176,7 @@ export function StatsPanel({ videoRef, hlsRef, videoId, label, direct, rendition
     };
   }, [direct, videoId]);
 
+  // ---- the numbers shown, worked out on each redraw ----
   const element = videoRef.current;
   const ahead = element ? Math.max(0, bufferedEnd(element) - element.currentTime) : 0;
 
@@ -272,6 +283,7 @@ function bufferedEnd(element: HTMLVideoElement): number {
   return time;
 }
 
+/** A speed in Mbit/s. */
 function formatBits(bitsPerSecond: number): string {
   const mbit = bitsPerSecond / 1_000_000;
   return mbit >= 10 ? `${Math.round(mbit)} Mbit/s` : `${mbit.toFixed(1)} Mbit/s`;

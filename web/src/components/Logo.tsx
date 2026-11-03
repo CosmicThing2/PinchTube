@@ -1,3 +1,9 @@
+/*
+ * Logo.tsx — the PinchTube logo as an inline SVG, used in the header
+ * (components/AppShell.tsx) and on the sign-in screen (pages/AuthPage.tsx).
+ * The same shape is used for the README logo and the app icons in web/public/.
+ */
+
 import { useId } from 'react';
 
 /**

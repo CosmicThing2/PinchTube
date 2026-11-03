@@ -1,3 +1,12 @@
+/*
+ * SaveToPlaylist.tsx — the "Save to playlist" pop-up.
+ *
+ * Opened from the "Save" button on the watch page (pages/Watch.tsx). Lists
+ * the user's own playlists with a tick on the ones already holding the
+ * video; ticking or unticking saves straight away. A new playlist can be
+ * made with the video already in it. Talks to server/src/routes/playlists.ts.
+ */
+
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type PlaylistDto } from '../lib/api';
 import { Dialog, Spinner } from './Common';
@@ -15,6 +24,7 @@ export function SaveToPlaylist({ videoId, onClose }: { videoId: string; onClose:
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  /** The user's playlists, and which of them already hold this video. */
   const load = () =>
     api
       .get<{ items: PlaylistDto[]; containing: number[] }>(`/api/playlists?video=${encodeURIComponent(videoId)}`)
@@ -29,6 +39,7 @@ export function SaveToPlaylist({ videoId, onClose }: { videoId: string; onClose:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
 
+  /** Adds the video to a playlist or takes it out. */
   const toggle = async (playlist: PlaylistDto) => {
     const inIt = containing.has(playlist.id);
     setBusy(playlist.id);
@@ -52,6 +63,7 @@ export function SaveToPlaylist({ videoId, onClose }: { videoId: string; onClose:
     }
   };
 
+  /** Makes a new playlist containing this video. */
   const create = async (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -94,6 +106,7 @@ export function SaveToPlaylist({ videoId, onClose }: { videoId: string; onClose:
         </div>
       )}
 
+      {/* The new-playlist form, or the button that opens it */}
       {creating ? (
         <form onSubmit={create} style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <input

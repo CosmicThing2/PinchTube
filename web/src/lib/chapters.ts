@@ -1,3 +1,13 @@
+/*
+ * chapters.ts — tidies a video's chapter list for drawing on the progress bar.
+ *
+ * The server sends chapters as found (server/src/library/chapters.ts).
+ * These helpers remove duplicates, decide which chapter a moment belongs to
+ * when they overlap (a SponsorBlock segment wins), and flatten the list into
+ * back-to-back pieces covering the whole video. Used by player/Player.tsx
+ * (the progress bar) and pages/Watch.tsx (the chapter list).
+ */
+
 import type { Chapter } from './api';
 
 /*

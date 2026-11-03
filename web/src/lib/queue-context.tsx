@@ -1,3 +1,17 @@
+/*
+ * queue-context.tsx — the play queue, shared across the whole app.
+ *
+ * QueueProvider (wrapped around the app in main.tsx) keeps the signed-in
+ * user's queue in memory and offers add / remove / clear / move / reorder,
+ * each of which calls the server (server/src/routes/queue.ts) and then shows
+ * the queue it sends back. It also holds:
+ *   - shuffle and loop, remembered in this browser only; a shuffle is a
+ *     saved order of ids laid over the real queue
+ *   - "queue mode", where tapping a video card queues it instead of playing it
+ * Components read it with useQueue(): the header's queue button, video cards,
+ * pages/Queue.tsx, the watch page and components/QueuePanel.tsx.
+ */
+
 import {
   createContext,
   useCallback,
@@ -10,6 +24,7 @@ import {
 import { api, type VideoDto } from './api';
 import { useApp } from './app-context';
 
+/** Everything useQueue() gives a component. */
 interface QueueValue {
   /** Server order — what the queue page shows and reorders. */
   items: VideoDto[];
@@ -37,10 +52,12 @@ interface QueueValue {
 
 const QueueContext = createContext<QueueValue | null>(null);
 
+// Browser storage keys for shuffle, the shuffled order, and loop.
 const SHUFFLE_KEY = 'ytm-queue-shuffle';
 const ORDER_KEY = 'ytm-queue-order';
 const LOOP_KEY = 'ytm-queue-loop';
 
+// Small localStorage helpers that cope with private browsing, where storage can throw.
 function readFlag(key: string): boolean {
   try {
     return localStorage.getItem(key) === '1';
@@ -66,6 +83,7 @@ function readOrder(): string[] {
   }
 }
 
+/** Reads the queue from inside any component. */
 export function useQueue(): QueueValue {
   const value = useContext(QueueContext);
   if (!value) throw new Error('useQueue must be used inside <QueueProvider>');
@@ -77,6 +95,7 @@ interface QueueResponse {
   count: number;
 }
 
+/** Holds the queue and makes it available to everything inside it. */
 export function QueueProvider({ children }: { children: ReactNode }) {
   const { user } = useApp();
   const [items, setItems] = useState<VideoDto[]>([]);
@@ -103,6 +122,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     return out;
   }, [items, shuffle, shuffleOrder]);
 
+  // Shuffle and loop switches.
   const toggleShuffle = useCallback(
     (currentId?: string) => {
       const next = !shuffle;
@@ -129,6 +149,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     writeValue(LOOP_KEY, next ? '1' : '0');
   }, [loop]);
 
+  /** Takes the queue the server sent back after a change. */
   const apply = useCallback((data: QueueResponse) => {
     setItems(data.items ?? []);
   }, []);
@@ -149,6 +170,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     else void refresh();
   }, [refresh, userId]);
 
+  // ---- changes, each saved on the server ----
   const add = useCallback(
     async (videoId: string) => {
       apply(await api.post<QueueResponse>('/api/queue', { videoId }));

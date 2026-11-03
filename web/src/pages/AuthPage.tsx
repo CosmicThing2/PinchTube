@@ -1,3 +1,15 @@
+/*
+ * AuthPage.tsx — the sign-in screen, and the first-run setup screen.
+ *
+ * main.tsx shows this instead of the app until someone is signed in:
+ *   - setup (no accounts exist yet): the setup code from the server log, a
+ *     username and a password, creating the first administrator
+ *   - sign-in: username and password; for an account with two-factor
+ *     sign-in, a second step then asks for the app's code or a recovery code
+ * The actual calls are made by lib/app-context.tsx (login, verifyTwoFactor,
+ * completeSetup).
+ */
+
 import { useState, type FormEvent } from 'react';
 import { useApp } from '../lib/app-context';
 import { ApiError } from '../lib/api';
@@ -18,6 +30,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'setup' }) {
 
   const isSetup = mode === 'setup';
 
+  /** Handles all three forms: the 2FA code, first-run setup, or username and password. */
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -59,6 +72,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'setup' }) {
     </div>
   );
 
+  // Step two of signing in: the code from the authenticator app (or a recovery code).
   if (ticket) {
     return (
       <div className="auth-screen">
@@ -124,6 +138,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'setup' }) {
     );
   }
 
+  // Sign-in, or first-run setup (which adds the setup code and password confirmation).
   return (
     <div className="auth-screen">
       <form className="auth-card" onSubmit={submit}>

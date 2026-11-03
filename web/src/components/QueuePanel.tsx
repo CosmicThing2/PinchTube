@@ -1,3 +1,12 @@
+/*
+ * QueuePanel.tsx — the queue box beside the player on the watch page.
+ *
+ * Shown while playing from the queue: the queue in play order with the
+ * current video marked, loop and shuffle buttons, and a menu to open the
+ * full queue page or clear it. The queue itself comes from
+ * lib/queue-context.tsx. PlaylistPanel.tsx is the playlist equivalent.
+ */
+
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueue } from '../lib/queue-context';
@@ -25,6 +34,7 @@ export function QueuePanel({ currentId, onClose }: { currentId: string; onClose:
 
   return (
     <section className="queue-panel" aria-label="Queue">
+      {/* Title, position and close button */}
       <div className="qp-head">
         <div style={{ minWidth: 0 }}>
           <h2>Queue</h2>
@@ -39,6 +49,7 @@ export function QueuePanel({ currentId, onClose }: { currentId: string; onClose:
         </button>
       </div>
 
+      {/* Loop, shuffle, and the "more" menu */}
       <div className="qp-controls">
         <button
           className={loop ? 'icon-btn active' : 'icon-btn'}
@@ -84,6 +95,7 @@ export function QueuePanel({ currentId, onClose }: { currentId: string; onClose:
         </div>
       </div>
 
+      {/* The queued videos, each linking to itself within the queue */}
       <div className="qp-list" ref={listRef}>
         {playOrder.map((video, position) => {
           const current = video.id === currentId;

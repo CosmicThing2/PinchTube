@@ -1,3 +1,26 @@
+/*
+ * Settings.tsx — the Settings page (/settings).
+ *
+ * One long page of panels. Administrators see everything; other users only
+ * their personal sections:
+ *   Library       media folder, scanning and the folder watcher      (admin)
+ *   Home page     which home rows show, in what order, and per-channel rows
+ *   Playback      default qualities, autoplay, SponsorBlock, gestures, subtitles...
+ *   Transcoding   hardware encoding, quality preset, cache            (admin)
+ *   Interface     theme, colours, card size, layout, browsing defaults
+ *   Password      change your own password
+ *   Two-factor    sign-in codes from an app (components/TwoFactorPanel.tsx)
+ *   Users         accounts and their access    (admin; components/UsersPanel.tsx)
+ *   System        library numbers, size charts, version                (admin)
+ *   Account       who is signed in, and sign out
+ *
+ * Changes are made to a draft copy and only sent when "Save changes" is
+ * pressed (a bar appears along the bottom while there are unsaved changes);
+ * colours preview live meanwhile. Settings come from and go to
+ * /api/settings via lib/app-context.tsx; what each setting means is defined
+ * in server/src/settings.ts.
+ */
+
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   api,
@@ -23,6 +46,8 @@ import {
 } from '../lib/accent';
 import { IconFolder, IconPin, IconRefresh } from '../components/Icons';
 
+// ---- choices offered by the drop-downs --------------------------------------
+
 const QUALITY_LABELS: Record<string, string> = {
   original: 'Original (direct play, no transcoding)',
   '2160p': '2160p',
@@ -44,6 +69,7 @@ const SUBTITLE_SIZES = [
   { value: '250', label: 'Enormous' },
 ];
 
+/** Descriptions and names of the built-in home page rows. */
 const ROW_DESCRIPTIONS: Record<string, string> = {
   continue: 'Videos you started but have not finished.',
   recent: 'The newest downloads across every channel.',
@@ -58,6 +84,9 @@ const ROW_LABELS: Record<string, string> = {
   channels: 'Per-channel rows',
 };
 
+// ---- small building blocks for the panels -----------------------------------
+
+/** One setting: its name and explanation on the left, the control on the right. */
 function Row({
   label,
   hint,
@@ -80,6 +109,7 @@ function Row({
   );
 }
 
+/** An on/off switch. */
 function Toggle({
   checked,
   onChange,
@@ -102,6 +132,7 @@ function Toggle({
   );
 }
 
+/** A number box, with an optional unit after it. */
 function NumberField({
   value,
   onChange,
@@ -137,6 +168,7 @@ function NumberField({
   );
 }
 
+/** A drop-down list of choices. */
 function Choice({
   value,
   onChange,
@@ -160,6 +192,7 @@ function Choice({
   );
 }
 
+/** A row of colour swatches, plus a custom colour picker at the end. */
 function ColourPicker({
   value,
   onChange,
@@ -206,6 +239,8 @@ function ColourPicker({
   );
 }
 
+// ---- the page -----------------------------------------------------------------
+
 export function Settings() {
   const { settings, saveSettings, refreshSettings, user, logout, dataSaver, setDataSaver } =
     useApp();
@@ -219,10 +254,12 @@ export function Settings() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // The draft starts as (and resets to) the saved settings.
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
 
+  /** Loads the System panel's numbers (admins only). */
   const loadSystem = () => {
     if (!isAdmin) return;
     api
@@ -252,6 +289,7 @@ export function Settings() {
     return () => window.clearInterval(timer);
   }, [scan?.running]);
 
+  /** Whether the draft differs from what is saved, which shows the save bar. */
   const dirty = useMemo(
     () => Boolean(draft && settings && JSON.stringify(draft) !== JSON.stringify(settings)),
     [draft, settings],
@@ -270,10 +308,12 @@ export function Settings() {
 
   if (!draft || !settings) return <Spinner center />;
 
+  /** Changes the draft; every control on the page goes through this. */
   const update = (patch: (current: AppSettings) => AppSettings) => {
     setDraft((current) => (current ? patch(structuredClone(current)) : current));
   };
 
+  /** "Save changes": sends the whole draft. */
   const save = async () => {
     setSaving(true);
     setMessage(null);
@@ -288,6 +328,7 @@ export function Settings() {
     }
   };
 
+  /** "Scan now" or "Full rescan". */
   const startScan = async (full: boolean) => {
     setMessage(null);
     try {
@@ -298,6 +339,7 @@ export function Settings() {
     }
   };
 
+  /** "Check": asks the server whether the media folder path exists and what is in it. */
   const checkPath = async () => {
     setPathCheck({ checking: true });
     try {
@@ -310,6 +352,7 @@ export function Settings() {
     }
   };
 
+  /** Dragging a home page row to a new position. */
   const moveRowTo = (from: number, to: number) => {
     update((current) => {
       const rows = current.home.rows.slice();
@@ -320,6 +363,7 @@ export function Settings() {
     });
   };
 
+  // The quality choices, with and without Auto and Audio only.
   const qualityOptions = QUALITY_ORDER.map((value) => ({ value, label: QUALITY_LABELS[value] }));
   const autoOption = { value: 'auto', label: 'Auto (adapt to connection speed)' };
   const audioOption = { value: 'audio', label: 'Audio only (lowest data use)' };
@@ -1213,6 +1257,7 @@ export function Settings() {
         </Row>
       </section>
 
+      {/* ------------------------------------- password, two-factor, users */}
       <PasswordPanel />
 
       <TwoFactorPanel />
@@ -1284,6 +1329,7 @@ export function Settings() {
         </button>
       </section>
 
+      {/* -------------------------------------------- unsaved-changes bar */}
       {dirty ? (
         <div
           style={{
@@ -1316,6 +1362,12 @@ export function Settings() {
   );
 }
 
+// ---- per-channel home rows --------------------------------------------------
+
+/**
+ * The "Channel rows" list under Home page: show or hide each channel's row,
+ * pin channels to the top, and drag pinned ones into order.
+ */
 function ChannelRowsEditor({
   rows,
   onChange,
@@ -1325,6 +1377,7 @@ function ChannelRowsEditor({
 }) {
   const [channels, setChannels] = useState<HomeChannelDto[] | null>(null);
 
+  // Every channel, once.
   useEffect(() => {
     api
       .get<{ items: HomeChannelDto[] }>('/api/home/channels')
@@ -1358,6 +1411,7 @@ function ChannelRowsEditor({
 
   const pinnedCount = list.filter((channel) => channel.pinned).length;
 
+  /** Hands the new list back to the page's draft, in the shape the settings store. */
   const emit = (next: HomeChannelDto[]) =>
     onChange(
       next.map((channel) => ({
@@ -1367,6 +1421,7 @@ function ChannelRowsEditor({
       })),
     );
 
+  /** Shows/hides or pins/unpins one channel. */
   const setAt = (index: number, changes: Partial<HomeChannelDto>) => {
     const next = list.slice();
     next[index] = { ...next[index], ...changes };
@@ -1457,6 +1512,9 @@ function ChannelRowsEditor({
   );
 }
 
+// ---- password -----------------------------------------------------------------
+
+/** Changing your own password; saved straight away, separately from the draft. */
 function PasswordPanel() {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');

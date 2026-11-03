@@ -1,3 +1,13 @@
+/*
+ * SizeCharts.tsx — the library size charts under Settings → System.
+ *
+ * Shows how much disk space the library uses: one bar per channel, split
+ * into colours by video codec (H.264, VP9, AV1...), then one bar per codec,
+ * with a hover tooltip and a table view as an alternative. The numbers come
+ * from GET /api/stats/sizes (sizeBreakdown in server/src/lib/videos.ts).
+ * Shown by pages/Settings.tsx.
+ */
+
 import { useEffect, useRef, useState, type FocusEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type CodecKey, type SizeBreakdown } from '../lib/api';
@@ -12,6 +22,7 @@ const CODEC_LABELS: Record<CodecKey, string> = {
   other: 'Other',
 };
 
+/** The tooltip's position and text. */
 interface Tip {
   x: number;
   y: number;
@@ -19,6 +30,7 @@ interface Tip {
   detail: string;
 }
 
+/** A share as a percentage, with one decimal place under 10%. */
 function percent(part: number, whole: number): string {
   if (!whole) return '0%';
   const value = (part / whole) * 100;
@@ -37,6 +49,7 @@ export function SizeCharts() {
   const [tip, setTip] = useState<Tip | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
+  // Load the numbers once.
   useEffect(() => {
     let cancelled = false;
     api
@@ -52,12 +65,14 @@ export function SizeCharts() {
     };
   }, []);
 
+  /** Shows the tooltip at the pointer. */
   const place = (event: { clientX: number; clientY: number }, value: string, detail: string) => {
     const rect = rootRef.current?.getBoundingClientRect();
     if (!rect) return;
     setTip({ x: event.clientX - rect.left, y: event.clientY - rect.top, value, detail });
   };
 
+  /** Shows the tooltip beside a bar reached with the keyboard. */
   const placeAtElement = (event: FocusEvent<HTMLElement>, value: string, detail: string) => {
     const rect = rootRef.current?.getBoundingClientRect();
     const target = event.currentTarget.getBoundingClientRect();
@@ -82,6 +97,7 @@ export function SizeCharts() {
 
   return (
     <div className="viz-root" ref={rootRef} onPointerLeave={() => setTip(null)}>
+      {/* Total size, and the chart / table switch */}
       <div className="viz-head">
         <div>
           <div className="viz-title">Library size</div>
@@ -105,6 +121,7 @@ export function SizeCharts() {
         ))}
       </div>
 
+      {/* Table view: one row per channel, one column per codec */}
       {showTable ? (
         <div style={{ overflowX: 'auto' }}>
           <table className="viz-table">
@@ -146,6 +163,7 @@ export function SizeCharts() {
         </div>
       ) : (
         <>
+          {/* Chart view: a stacked bar per channel, linking to the channel */}
           <div className="viz-chart" role="list" aria-label="Size per channel">
             {channels.map((channel) => (
               <Link
@@ -192,6 +210,7 @@ export function SizeCharts() {
             ))}
           </div>
 
+          {/* Then a bar per codec */}
           <div className="viz-section-title">Size per codec</div>
           <div className="viz-chart viz-chart-small" role="list" aria-label="Size per codec">
             {codecs.map((codec) => (

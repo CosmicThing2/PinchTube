@@ -1,3 +1,12 @@
+/*
+ * Playlists.tsx — the playlists page (/playlists).
+ *
+ * Shows the user's own playlists, then ones other users have shared, as
+ * cards with a cover thumbnail, video count and length. A "New playlist"
+ * button creates one and opens it (pages/Playlist.tsx). Data comes from
+ * /api/playlists (server/src/routes/playlists.ts).
+ */
+
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, urls, type PlaylistDto } from '../lib/api';
@@ -6,6 +15,7 @@ import { LibrarySwitch } from '../components/LibrarySwitch';
 import { formatCount, formatDuration } from '../lib/format';
 import { IconPlaylist, IconPlus } from '../components/Icons';
 
+/** One playlist tile: cover, count, name, and whose it is. */
 function PlaylistCard({ playlist }: { playlist: PlaylistDto }) {
   return (
     <Link to={`/playlist/${playlist.id}`} className="playlist-card">
@@ -36,6 +46,7 @@ export function Playlists() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
 
+  // Load the list once.
   useEffect(() => {
     api
       .get<{ items: PlaylistDto[] }>('/api/playlists')
@@ -43,6 +54,7 @@ export function Playlists() {
       .catch((err) => setError(err?.message ?? 'Could not load playlists'));
   }, []);
 
+  /** Creates a playlist and goes straight to it. */
   const create = async (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -63,6 +75,7 @@ export function Playlists() {
       <LibrarySwitch current="playlists" />
       <h1 className="page-title">Playlists</h1>
 
+      {/* "New playlist" button, or its name form */}
       <div className="toolbar">
         {creating ? (
           <form onSubmit={create} style={{ display: 'flex', gap: 8, flex: 1, maxWidth: 480 }}>
@@ -92,6 +105,7 @@ export function Playlists() {
 
       {error ? <div className="notice error">{error}</div> : null}
 
+      {/* Your playlists, then everyone else's shared ones */}
       {!items ? (
         <Spinner center />
       ) : items.length === 0 ? (

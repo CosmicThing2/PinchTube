@@ -1,3 +1,14 @@
+/*
+ * Channels.tsx — the Channels page (/channels) and a single channel's page
+ * (/channel/:id).
+ *
+ *   Channels  every channel the user may see, A–Z or by latest upload, as a
+ *             grid or list (the "Channel layout" setting)
+ *   Channel   one channel: banner, avatar, name, counts and description,
+ *             then its videos (components/VideoBrowser.tsx)
+ * Data comes from /api/channels (server/src/routes/library.ts).
+ */
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, urls, type ChannelDto } from '../lib/api';
@@ -6,12 +17,14 @@ import { useApp } from '../lib/app-context';
 import { VideoBrowser } from '../components/VideoBrowser';
 import { formatCount, formatRelative } from '../lib/format';
 
+/** Every channel, as cards. */
 export function Channels() {
   const { settings, user } = useApp();
   const [channels, setChannels] = useState<ChannelDto[] | null>(null);
   const [order, setOrder] = useState<'name' | 'recent'>('name');
   const [error, setError] = useState<string | null>(null);
 
+  // Reload whenever the order changes.
   useEffect(() => {
     let cancelled = false;
     setChannels(null);
@@ -65,12 +78,14 @@ export function Channels() {
   );
 }
 
+/** One channel's page. */
 export function Channel() {
   const { id = '' } = useParams();
   const [channel, setChannel] = useState<ChannelDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
+  // Load the channel's details when the address changes.
   useEffect(() => {
     let cancelled = false;
     setChannel(null);
@@ -92,6 +107,7 @@ export function Channel() {
 
   return (
     <div>
+      {/* Banner, avatar, name, counts and a description that expands */}
       <div className="channel-hero">
         {channel.hasBanner || channel.hasFanart ? (
           <img
@@ -138,6 +154,7 @@ export function Channel() {
         </div>
       </div>
 
+      {/* The channel's videos */}
       <VideoBrowser
         channelId={channel.id}
         showChannel={false}

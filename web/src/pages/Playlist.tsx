@@ -1,3 +1,14 @@
+/*
+ * Playlist.tsx — one playlist's page (/playlist/:id).
+ *
+ * Shows the playlist's videos with "Play all" and "Shuffle". Everyone who
+ * can open it can choose the quality they play it at. The owner can also
+ * rename it, share it, switch "strict access permissions", drag videos into
+ * a new order (components/SortableList.tsx), remove videos, and delete it.
+ * Talks to /api/playlists/:id (server/src/routes/playlists.ts); playing goes
+ * to the watch page with ?list=<id>.
+ */
+
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type VideoDto } from '../lib/api';
@@ -9,6 +20,7 @@ import { Thumb } from '../components/VideoCard';
 import { formatCount, formatDuration, formatRelative } from '../lib/format';
 import { IconClose, IconEdit, IconPlay, IconShuffle, IconTrash } from '../components/Icons';
 
+/** Readable names for quality ids. */
 const QUALITY_NAMES: Record<string, string> = {
   auto: 'Auto',
   original: 'Original',
@@ -46,11 +58,13 @@ export function Playlist() {
   /** The order on screen during a drag, read back when the drag ends. */
   const orderRef = useRef<VideoDto[]>([]);
 
+  /** Takes the playlist the server sent back. */
   const apply = useCallback((response: PlaylistResponse) => {
     setData(response);
     orderRef.current = response.items;
   }, []);
 
+  // Load the playlist when the address changes.
   useEffect(() => {
     setData(null);
     setError(null);
@@ -60,6 +74,7 @@ export function Playlist() {
       .catch((err) => setError(err?.message ?? 'Could not load the playlist'));
   }, [apply, id]);
 
+  /** Runs one change and shows the updated playlist, or the error. */
   const run = async (work: () => Promise<PlaylistResponse | void>) => {
     setError(null);
     try {
@@ -76,6 +91,7 @@ export function Playlist() {
   const { playlist, items } = data;
   const mine = playlist.mine;
 
+  /** "Play all" / "Shuffle": sets shuffle for this playlist and opens its first video. */
   const play = (shuffled: boolean) => {
     if (!items.length) return;
     setPlaylistShuffle(playlist.id, items, shuffled);
@@ -91,6 +107,7 @@ export function Playlist() {
     navigate(`/watch/${first}?list=${playlist.id}`);
   };
 
+  /** Saves a new name. */
   const rename = (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -101,6 +118,7 @@ export function Playlist() {
     });
   };
 
+  // Dragging: the list re-sorts on screen as the row moves, and is saved when dropped.
   const moveTo = (from: number, to: number) => {
     const next = orderRef.current.slice();
     const [moved] = next.splice(from, 1);
@@ -116,6 +134,7 @@ export function Playlist() {
       }),
     );
 
+  /** One video row: drag handle (owner only), number, thumbnail, title, remove button. */
   const renderRow = (video: VideoDto, index: number, handle: ReactNode, dragging: boolean) => (
     <div className={`queue-item${dragging ? ' dragging' : ''}`}>
       {handle}
@@ -151,6 +170,7 @@ export function Playlist() {
 
   return (
     <div style={{ maxWidth: 900 }}>
+      {/* Title, with a rename form for the owner */}
       {renaming ? (
         <form onSubmit={rename} style={{ display: 'flex', gap: 8, margin: '4px 0 14px' }}>
           <input
@@ -197,6 +217,7 @@ export function Playlist() {
 
       {error ? <div className="notice error">{error}</div> : null}
 
+      {/* Play all / Shuffle */}
       <div className="toolbar">
         <button className="btn primary" disabled={!items.length} onClick={() => play(false)}>
           <IconPlay />
@@ -208,6 +229,7 @@ export function Playlist() {
         </button>
       </div>
 
+      {/* Settings: sharing and strict (owner), quality (everyone), delete (owner) */}
       <div className="panel">
         <h2>Playlist settings</h2>
         {mine ? (
@@ -311,6 +333,7 @@ export function Playlist() {
           ) : null}
       </div>
 
+      {/* The videos: draggable for the owner, a plain list for everyone else */}
       {items.length === 0 ? (
         <EmptyState
           title="Nothing in this playlist"

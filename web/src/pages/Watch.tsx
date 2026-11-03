@@ -1,3 +1,21 @@
+/*
+ * Watch.tsx — the watch page (/watch/:id), where a video plays.
+ *
+ * Fetches everything about the video in one call (GET /api/videos/:id) and
+ * lays out:
+ *   - the player itself (player/Player.tsx)
+ *   - title, channel, and buttons: mark watched, queue, save to playlist,
+ *     open on YouTube
+ *   - the description with clickable links and timestamps (lib/linkify.tsx),
+ *     and the chapter list, which follows playback
+ *   - a side column with the queue or playlist box and "More from" the channel
+ * It also decides what plays next. The address says how the video was
+ * opened: ?queue=1 plays through the queue (lib/queue-context.tsx, applying
+ * the "when moving on" setting), ?list=<id> through a playlist
+ * (lib/playlist-playback.ts), and otherwise autoplay moves on to the channel's
+ * next video if that setting is on. Progress is saved as it plays.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, urls, type WatchPayload } from '../lib/api';
@@ -27,6 +45,7 @@ export function Watch() {
   const playerRef = useRef<PlayerHandle>(null);
   /** Coarse playback position, so the chapter list can follow along. */
   const [currentTime, setCurrentTime] = useState(0);
+  // How the video was opened: from the queue, from a playlist, or on its own.
   const [params] = useSearchParams();
   const playingQueue = params.get('queue') === '1';
   const listParam = params.get('list');
@@ -59,6 +78,7 @@ export function Watch() {
     }
   };
 
+  // Load the video (and its playback details) whenever the address changes.
   useEffect(() => {
     let cancelled = false;
     setData(null);
@@ -82,6 +102,7 @@ export function Watch() {
     };
   }, [id]);
 
+  /** The player reports the position every few seconds; it is saved on the server. */
   const onProgress = useCallback(
     (position: number, duration: number) => {
       void api.postKeepalive(`/api/videos/${id}/progress`, { position, duration }).catch(() => {});
@@ -89,6 +110,9 @@ export function Watch() {
     [id],
   );
 
+  // ---- what plays before and after this video ----
+
+  /** The channel's next video, for autoplay when not in a queue or playlist. */
   const next = useMemo(() => data?.upNext?.[0] ?? null, [data]);
 
   // Position within the playlist, in play order (shuffled or not).
@@ -163,6 +187,7 @@ export function Watch() {
     [id, navigate, playOrder, queueLoop, removeFromQueue, settings],
   );
 
+  /** When the video finishes: mark it watched, then move on as the queue, playlist or autoplay says. */
   const onEnded = useCallback(() => {
     if (!data) return;
 
@@ -185,6 +210,7 @@ export function Watch() {
     if (data.playback.autoplayNext && next) navigate(`/watch/${next.id}`);
   }, [advanceQueue, data, id, listId, listNext, navigate, next, playingList, playingQueue]);
 
+  // Position within the queue, for the player's previous / next buttons.
   const queueIndex = playingQueue ? playOrder.findIndex((item) => item.id === id) : -1;
   const previousVideo = !playingQueue
     ? null
@@ -198,6 +224,7 @@ export function Watch() {
     : ((queueIndex >= 0 ? playOrder[queueIndex + 1] : playOrder[0]) ??
       (queueLoop && playOrder.length > 0 ? playOrder[0] : null));
 
+  // The player's previous / next track buttons.
   const goPrevious = useCallback(() => {
     if (playingList) {
       if (listPrevious) navigate(`/watch/${listPrevious.id}?list=${listId}`);
@@ -219,6 +246,7 @@ export function Watch() {
     if (nextVideo) navigate(`/watch/${nextVideo.id}`);
   }, [advanceQueue, id, listId, listNext, navigate, nextVideo, playingList, playingQueue]);
 
+  /** The "Mark watched / unwatched" button. */
   const toggleWatched = async () => {
     const value = !watched;
     setWatched(value);
@@ -240,6 +268,7 @@ export function Watch() {
       ? video.progress.position
       : 0;
 
+  // The technical line in the description box: quality, codec, size, length.
   const details = [
     shortSide(video.width, video.height) ? `${shortSide(video.width, video.height)}p source` : null,
     video.vcodec ? video.vcodec.toUpperCase() : null,
@@ -249,6 +278,7 @@ export function Watch() {
     .filter(Boolean)
     .join(' · ');
 
+  // The player, playing at the queue's or playlist's quality when there is one.
   const player = (
     <Player
       ref={playerRef}
@@ -275,13 +305,13 @@ export function Watch() {
     />
   );
 
-  // youtube.com bounces phones to m.youtube.com anyway, but linking there
-  // directly skips the redirect on a touch device.
   // Listed once each, with one highlighted even where chapters overlap — the
   // same one the progress bar shows.
   const chapterList = uniqueChapters(video.chapters);
   const activeChapter = chapterOwning(chapterList, currentTime);
 
+  // youtube.com bounces phones to m.youtube.com anyway, but linking there
+  // directly skips the redirect on a touch device.
   const youtubeUrl = video.youtubeId
     ? `https://${window.matchMedia('(pointer: coarse)').matches ? 'm' : 'www'}.youtube.com/watch?v=${video.youtubeId}`
     : null;
@@ -295,6 +325,7 @@ export function Watch() {
 
         <h1 className="watch-title">{video.title}</h1>
 
+        {/* Channel, then the action buttons */}
         <div className="watch-meta">
           {(() => {
             const inner = (
@@ -372,6 +403,7 @@ export function Watch() {
           </div>
         </div>
 
+        {/* Description box: technical details, file path (admins), description */}
         <div className={expanded ? 'watch-desc' : 'watch-desc collapsed'}>
           <div className="stats">{details}</div>
           {/* Only administrators are sent the path at all. */}
@@ -395,6 +427,7 @@ export function Watch() {
           ) : null}
         </div>
 
+        {/* Chapter list; clicking one jumps there */}
         {chapterList.length ? (
           <div className="chapters">
             <h2>Chapters</h2>
@@ -419,6 +452,7 @@ export function Watch() {
 
       {saveOpen ? <SaveToPlaylist videoId={video.id} onClose={() => setSaveOpen(false)} /> : null}
 
+      {/* Side column: playlist or queue box, then more from this channel */}
       <aside className="upnext">
         {playingList && listPanelOpen ? (
           <PlaylistPanel playback={list} currentId={video.id} onClose={() => setListPanelOpen(false)} />

@@ -1,3 +1,14 @@
+/*
+ * accent.ts — the user's accent and SponsorBlock colours.
+ *
+ * The colours are applied by setting CSS variables (--accent,
+ * --accent-contrast, --sponsor) on the page, which styles/app.css uses
+ * everywhere. Also works out whether text on the accent colour should be
+ * white or dark, and keeps a copy in the browser so main.tsx can paint the
+ * right colours before sign-in finishes. Chosen in pages/Settings.tsx;
+ * applied from lib/app-context.tsx whenever settings load or change.
+ */
+
 /**
  * The user's colours: the accent (buttons, switches, progress bars and
  * highlights) and the tint for SponsorBlock segments. Each preset is a
@@ -10,6 +21,7 @@ export interface ColourPreset {
   color: string;
 }
 
+/** The accent choices on the Settings page. */
 export const ACCENT_PRESETS: ColourPreset[] = [
   { id: 'red', label: 'Red', color: '#ff0033' },
   { id: 'orange', label: 'Orange', color: '#ea580c' },
@@ -26,18 +38,22 @@ export const SPONSOR_PRESETS: ColourPreset[] = ACCENT_PRESETS.map((preset) =>
   preset.id === 'green' ? { ...preset, color: '#69c054' } : preset,
 );
 
+// Where the browser copy is kept (localStorage).
 const ACCENT_KEY = 'ytm-accent';
 const SPONSOR_KEY = 'ytm-sponsor';
 
+/** Whether a setting is a custom #rrggbb colour rather than a preset name. */
 export function isCustomColour(value: string | undefined): boolean {
   return /^#[0-9a-f]{6}$/i.test(value ?? '');
 }
 
+/** The actual colour for a setting: the custom colour, the preset's, or the fallback preset's. */
 export function colourOf(presets: ColourPreset[], value: string | undefined, fallback: string): string {
   if (isCustomColour(value)) return value!.toLowerCase();
   return presets.find((preset) => preset.id === value)?.color ?? presets.find((p) => p.id === fallback)!.color;
 }
 
+/** How bright a colour looks (WCAG relative luminance, 0 to 1). */
 function luminance(hex: string): number {
   const channel = (i: number) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
@@ -59,6 +75,7 @@ export interface Colours {
   sponsor?: string;
 }
 
+/** Sets the CSS colour variables on the page. */
 export function applyColours({ accent, sponsor }: Colours): void {
   const root = document.documentElement.style;
   const accentHex = colourOf(ACCENT_PRESETS, accent, 'red');
@@ -77,6 +94,7 @@ export function rememberColours({ accent, sponsor }: Colours): void {
   }
 }
 
+/** The colours remembered in the browser, if any. */
 export function readCachedColours(): Colours {
   try {
     return {

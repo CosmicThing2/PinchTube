@@ -1,3 +1,12 @@
+/*
+ * format.ts — small helpers that turn numbers into readable text.
+ *
+ * Durations ("12:34"), relative times ("3 days ago"), dates, file sizes
+ * ("1.2 GB"), counts ("1 video" / "5 videos") and a video's quality number.
+ * Used all over the pages and components.
+ */
+
+/** Seconds as "m:ss" or "h:mm:ss"; empty for unknown. */
 export function formatDuration(seconds: number | null | undefined): string {
   if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return '';
   const total = Math.round(seconds);
@@ -45,6 +54,7 @@ export function formatRelative(ms: number | null | undefined): string {
   return `${n} year${n === 1 ? '' : 's'} ago`;
 }
 
+/** A date such as "10 Jul 2026", in the browser's own language. */
 export function formatDate(ms: number | null | undefined): string {
   if (!ms) return '';
   return new Date(ms).toLocaleDateString(undefined, {
@@ -54,6 +64,7 @@ export function formatDate(ms: number | null | undefined): string {
   });
 }
 
+/** A size such as "850 MB" or "1.2 GB". */
 export function formatBytes(bytes: number | null | undefined): string {
   if (!bytes || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -72,6 +83,7 @@ export function shortSide(width: number | null | undefined, height: number | nul
   return height || null;
 }
 
+/** "1 video", "1,204 videos". */
 export function formatCount(n: number, singular: string, plural = `${singular}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? singular : plural}`;
 }

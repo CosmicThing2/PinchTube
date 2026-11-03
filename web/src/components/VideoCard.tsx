@@ -1,3 +1,15 @@
+/*
+ * VideoCard.tsx — how a single video is shown in lists.
+ *
+ *   Thumb          the thumbnail with its duration, "Watched" badge and
+ *                  progress bar; also used by the queue and playlist lists
+ *   VideoCard      a thumbnail, title, channel and date, as on the home page
+ *                  rows (VideoRail.tsx) and grids (VideoBrowser.tsx)
+ *   VideoListItem  a smaller side-by-side version for the watch page's "Up next"
+ * In "queue mode" (lib/queue-context.tsx) tapping a card adds the video to
+ * the queue instead of opening it.
+ */
+
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { VideoDto } from '../lib/api';
@@ -15,6 +27,7 @@ interface Props {
   thumbWidth?: number;
 }
 
+/** A video's thumbnail, faded if watched (when that setting is on), with its badges. */
 export function Thumb({ video, width = 480 }: { video: VideoDto; width?: number }) {
   const [failed, setFailed] = useState(false);
   const { settings } = useApp();
@@ -60,6 +73,7 @@ export function Thumb({ video, width = 480 }: { video: VideoDto; width?: number 
   );
 }
 
+/** A video tile linking to its watch page. */
 export function VideoCard({ video, showChannel = true, showAvatar = true, thumbWidth = 480 }: Props) {
   const { queueMode, add, contains } = useQueue();
   const queued = contains(video.id);
@@ -107,6 +121,7 @@ export function VideoCard({ video, showChannel = true, showAvatar = true, thumbW
   );
 }
 
+/** A compact row version of the card, for "Up next". */
 export function VideoListItem({ video, showChannel = true }: Props) {
   const { queueMode, add, contains } = useQueue();
   const queued = contains(video.id);

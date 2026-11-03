@@ -1,7 +1,16 @@
+/*
+ * Icons.tsx — every icon in the app, as small inline SVG components.
+ *
+ * Each icon is a React component (IconHome, IconPlay, ...) drawn in
+ * currentColor, so it takes the colour of the text around it. Inline SVG
+ * means no icon font or image files to load. Used throughout the app.
+ */
+
 import type { ReactNode, SVGProps } from 'react';
 
 type P = SVGProps<SVGSVGElement>;
 
+/** Makes an icon component from an SVG path. */
 const svg = (path: ReactNode, viewBox = '0 0 24 24') =>
   function Icon(props: P) {
     return (

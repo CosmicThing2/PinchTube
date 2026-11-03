@@ -1,3 +1,20 @@
+/*
+ * main.tsx — the web app's entry point.
+ *
+ * The web app is a React single-page app: the server sends one HTML page
+ * (web/index.html) and this script draws everything in it, switching
+ * "pages" in the browser without reloading. This file:
+ *   - paints the saved theme and colours before anything else, so the page
+ *     does not flash the wrong colours while loading
+ *   - wraps the app in its shared state providers: AppProvider
+ *     (lib/app-context.tsx: who is signed in, their settings) and
+ *     QueueProvider (lib/queue-context.tsx: the play queue)
+ *   - shows the setup or sign-in screen (pages/AuthPage.tsx) until signed
+ *     in, then the main layout (components/AppShell.tsx) with the router
+ *     that maps each address (/, /watch/:id, /settings, ...) to its page
+ *   - registers the service worker (public/sw.js) when served over HTTPS
+ */
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
@@ -23,6 +40,7 @@ import { applyColours, readCachedColours } from './lib/accent';
 applyTheme(readCachedTheme());
 applyColours(readCachedColours());
 
+/** Picks the screen: a spinner while checking the session, setup, sign-in, or the app itself. */
 function Router() {
   const { status } = useApp();
 
@@ -37,6 +55,7 @@ function Router() {
   if (status === 'setup') return <AuthPage mode="setup" />;
   if (status === 'login') return <AuthPage mode="login" />;
 
+  // Signed in: the page for the current address, inside the header and side menu.
   return (
     <AppShell>
       <Routes>
@@ -57,6 +76,7 @@ function Router() {
   );
 }
 
+// Start the app in the page's #root element.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

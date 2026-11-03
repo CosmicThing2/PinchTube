@@ -1,3 +1,14 @@
+/*
+ * SortableList.tsx — a list whose rows can be dragged into a new order.
+ *
+ * A general-purpose component: the caller supplies the items and how to draw
+ * each row, and is told as rows move and when the drag ends (to save the new
+ * order). Works with mouse and touch, scrolls the page when dragging near
+ * the top or bottom, and only starts a drag from each row's handle. Used for
+ * reordering playlists (pages/Playlist.tsx) and the home page rows and
+ * channels in Settings (pages/Settings.tsx).
+ */
+
 import {
   useEffect,
   useLayoutEffect,
@@ -9,6 +20,7 @@ import {
 import { createPortal } from 'react-dom';
 import { IconMenu } from './Icons';
 
+/** What the caller passes in. */
 interface SortableListProps<T> {
   items: T[];
   keyOf: (item: T) => string;
@@ -24,6 +36,7 @@ interface SortableListProps<T> {
   className?: string;
 }
 
+/** The row being dragged: its size, and where on it the pointer took hold. */
 interface DragState {
   key: string;
   width: number;
@@ -32,7 +45,9 @@ interface DragState {
   offsetY: number;
 }
 
+/** How close to the window's edge auto-scrolling starts. */
 const EDGE_PX = 72;
+/** How long the dropped row takes to slide into place. */
 const SETTLE_MS = 170;
 
 /**
@@ -64,6 +79,7 @@ export function SortableList<T>({
   const latest = useRef({ items, keyOf, canMove, onMove, onDrop, drag });
   latest.current = { items, keyOf, canMove, onMove, onDrop, drag };
 
+  /** Moves the floating copy of the row to follow the pointer. */
   const positionGhost = () => {
     const d = latest.current.drag;
     const ghost = ghostRef.current;
@@ -77,6 +93,7 @@ export function SortableList<T>({
     positionGhost();
   });
 
+  /** Works out which slot the pointer is over and moves the row there. */
   const retarget = () => {
     const { items: list, keyOf: key, canMove: allowed, onMove: move, drag: d } = latest.current;
     if (!d || settlingRef.current) return;
@@ -100,6 +117,7 @@ export function SortableList<T>({
     move(from, target);
   };
 
+  // While dragging: follow the pointer, auto-scroll, and finish on release.
   useEffect(() => {
     if (!drag) return;
 
@@ -162,6 +180,7 @@ export function SortableList<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag !== null]);
 
+  /** Starts dragging a row when its handle is pressed. */
   const begin = (key: string) => (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     const row = rowRefs.current.get(key);
@@ -182,6 +201,7 @@ export function SortableList<T>({
   const draggedItem = drag ? items.find((item) => keyOf(item) === drag.key) : undefined;
   const draggedIndex = drag ? items.findIndex((item) => keyOf(item) === drag.key) : -1;
 
+  // The rows (the dragged one shown as an empty placeholder), plus the floating copy.
   return (
     <>
       <div className={className}>

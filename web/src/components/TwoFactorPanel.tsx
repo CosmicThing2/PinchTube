@@ -1,14 +1,27 @@
+/*
+ * TwoFactorPanel.tsx — the "Two-factor sign-in" section of Settings.
+ *
+ * Lets a user turn on sign-in codes from an authenticator app: it shows a QR
+ * code (and the key as text) to add to the app, then asks for a code to
+ * confirm, then shows one-time recovery codes to keep. Once on, it can make
+ * new recovery codes or turn it off again, both of which need the password.
+ * Talks to the /api/auth/2fa routes (server/src/routes/auth.ts). Shown by
+ * pages/Settings.tsx.
+ */
+
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useApp } from '../lib/app-context';
 import { Spinner } from './Common';
 import { IconShield } from './Icons';
 
+/** Whether 2FA is on, from GET /api/auth/2fa. */
 interface Status {
   enabled: boolean;
   recoveryCodesLeft: number;
 }
 
+/** A new secret being set up, with its QR code as an image. */
 interface Enrolment {
   secret: string;
   url: string;
@@ -82,6 +95,7 @@ export function TwoFactorPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /** Re-reads whether 2FA is on. */
   const load = () =>
     api
       .get<Status>('/api/auth/2fa')
@@ -92,6 +106,7 @@ export function TwoFactorPanel() {
     void load();
   }, []);
 
+  /** Runs a step, showing it as busy and any error underneath. */
   const attempt = async (work: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -104,12 +119,14 @@ export function TwoFactorPanel() {
     }
   };
 
+  /** Step 1: get a new secret and QR code. */
   const start = () =>
     attempt(async () => {
       setEnrolment(await api.post<Enrolment>('/api/auth/2fa/setup'));
       setCode('');
     });
 
+  /** Step 2: confirm with a code from the app; it is now on, and recovery codes are shown. */
   const confirm = (event: FormEvent) => {
     event.preventDefault();
     void attempt(async () => {
@@ -121,6 +138,7 @@ export function TwoFactorPanel() {
     });
   };
 
+  /** Turning it off, or making new recovery codes, after the password is typed. */
   const withPassword = (event: FormEvent) => {
     event.preventDefault();
     void attempt(async () => {
@@ -148,6 +166,7 @@ export function TwoFactorPanel() {
       {error ? <div className="notice error">{error}</div> : null}
       {codes ? <RecoveryCodes codes={codes} onDone={() => setCodes(null)} /> : null}
 
+      {/* Loading, setting up (QR code), on (with its options), or off (a set-up button) */}
       {!status ? (
         <Spinner />
       ) : enrolment ? (

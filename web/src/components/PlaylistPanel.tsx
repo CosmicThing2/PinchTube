@@ -1,3 +1,12 @@
+/*
+ * PlaylistPanel.tsx — the playlist box beside the player on the watch page.
+ *
+ * Shown when a video is played from a playlist: the playlist's name, its
+ * videos in play order with the current one marked, and loop / shuffle
+ * buttons. The data comes from lib/playlist-playback.ts via pages/Watch.tsx.
+ * It looks and works the same as QueuePanel.tsx does for the queue.
+ */
+
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import type { PlaylistPlayback } from '../lib/playlist-playback';
@@ -32,6 +41,7 @@ export function PlaylistPanel({
 
   return (
     <section className="queue-panel" aria-label="Playlist">
+      {/* Title, owner, position and close button */}
       <div className="qp-head">
         <div style={{ minWidth: 0 }}>
           <h2>
@@ -49,6 +59,7 @@ export function PlaylistPanel({
         </button>
       </div>
 
+      {/* Loop and shuffle */}
       <div className="qp-controls">
         <button
           className={loop ? 'icon-btn active' : 'icon-btn'}
@@ -68,6 +79,7 @@ export function PlaylistPanel({
         </button>
       </div>
 
+      {/* The videos, each linking to itself within this playlist */}
       <div className="qp-list" ref={listRef}>
         {playOrder.map((video, position) => {
           const current = video.id === currentId;

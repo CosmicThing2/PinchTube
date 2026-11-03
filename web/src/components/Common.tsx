@@ -1,3 +1,14 @@
+/*
+ * Common.tsx — small building blocks used on many pages.
+ *
+ *   Select        a drop-down that looks the same in every browser
+ *   Spinner       the loading indicator
+ *   EmptyState    the "nothing here" message with an icon
+ *   ChannelCard   a channel's avatar, name and video count (Channels page)
+ *   SkeletonGrid  grey placeholder cards shown while a page loads
+ *   Dialog        a pop-up window (a sheet from the bottom on a phone)
+ */
+
 import { Link } from 'react-router-dom';
 import type { ChannelDto } from '../lib/api';
 import { urls } from '../lib/api';
@@ -52,10 +63,12 @@ export function Select({
   );
 }
 
+/** The spinning loading indicator. */
 export function Spinner({ center = false }: { center?: boolean }) {
   return <div className={center ? 'spinner center' : 'spinner'} role="status" aria-label="Loading" />;
 }
 
+/** A friendly message when a list is empty, with an optional button. */
 export function EmptyState({
   title,
   message,
@@ -75,6 +88,7 @@ export function EmptyState({
   );
 }
 
+/** A channel tile: avatar, name, video count and how many are new. */
 export function ChannelCard({ channel }: { channel: ChannelDto }) {
   return (
     <Link className="channel-card" to={`/channel/${channel.id}`}>
@@ -100,6 +114,7 @@ export function ChannelCard({ channel }: { channel: ChannelDto }) {
   );
 }
 
+/** Grey placeholder cards in the shape of the video grid, shown while loading. */
 export function SkeletonGrid({ count = 12 }: { count?: number }) {
   return (
     <div className="grid">
@@ -129,6 +144,7 @@ export function Dialog({
   children: ReactNode;
   width?: number;
 }) {
+  // Escape closes it.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -137,6 +153,7 @@ export function Dialog({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Drawn at the end of the page (a portal), so it sits above everything else.
   return createPortal(
     <div className="dialog-scrim" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={title} style={{ maxWidth: width }}>

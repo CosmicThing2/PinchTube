@@ -1,3 +1,19 @@
+/*
+ * app-context.tsx — app-wide state: who is signed in, their settings, the theme.
+ *
+ * A React "context" makes values available to every component without
+ * passing them down by hand. AppProvider (wrapped around the whole app in
+ * main.tsx) holds:
+ *   - status: still loading, first-run setup needed, signed out, or ready
+ *   - the signed-in user and their settings, and functions to sign in
+ *     (including the two-factor step), set up, sign out and save settings
+ *   - the theme (system/dark/light) and colours, applied to the page
+ *   - two per-device switches kept in this browser only: theater mode and
+ *     data saver
+ * Any component reads these with useApp(). Talks to the server through
+ * lib/api.ts; the sign-in screens are pages/AuthPage.tsx.
+ */
+
 import {
   createContext,
   useCallback,
@@ -12,15 +28,18 @@ import { applyColours, rememberColours } from './accent';
 
 export type Theme = 'system' | 'dark' | 'light';
 
+// Browser storage (localStorage) keys for things remembered on this device.
 const THEME_KEY = 'ytm-theme';
 const THEATER_KEY = 'ytm-theater';
 const DATA_SAVER_KEY = 'ytm-data-saver';
 
+/** The theme last used in this browser, so main.tsx can paint it before sign-in. */
 export function readCachedTheme(): Theme {
   const stored = localStorage.getItem(THEME_KEY);
   return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'system';
 }
 
+/** Switches the page's theme (styles/app.css reads the data-theme attribute) and remembers it. */
 export function applyTheme(theme: Theme): void {
   const root = document.documentElement;
   if (theme === 'system') root.removeAttribute('data-theme');
@@ -30,6 +49,7 @@ export function applyTheme(theme: Theme): void {
 
 type Status = 'loading' | 'setup' | 'login' | 'ready';
 
+/** Everything useApp() gives a component. */
 interface AppValue {
   status: Status;
   /** Lives here rather than in the watch page so the shell can collapse its nav. */
@@ -61,12 +81,14 @@ interface AppValue {
 
 const AppContext = createContext<AppValue | null>(null);
 
+/** Reads the app-wide state from inside any component. */
 export function useApp(): AppValue {
   const value = useContext(AppContext);
   if (!value) throw new Error('useApp must be used inside <AppProvider>');
   return value;
 }
 
+/** Holds the app-wide state and makes it available to everything inside it. */
 export function AppProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -98,6 +120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  // The two per-device switches, saved in this browser as they change.
   const setDataSaver = useCallback((value: boolean) => {
     setDataSaverHere(value);
     try {
@@ -119,6 +142,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /** Fetches the user's settings and applies their theme. */
   const loadSettings = useCallback(async () => {
     const data = await api.get<{ settings: AppSettings }>('/api/settings');
     setSettings(data.settings);
@@ -127,6 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     applyTheme(serverTheme);
   }, []);
 
+  /** On first load: is setup needed, is anyone signed in, and if so load their settings. */
   const bootstrap = useCallback(async () => {
     try {
       const info = await api.get<{ setupRequired: boolean; authenticated: boolean; user: CurrentUser | null }>(
@@ -173,6 +198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rememberColours({ accent, sponsor });
   }, [settings, accent, sponsor]);
 
+  /** The theme switch in the header: applied at once, saved in the background. */
   const setTheme = useCallback(
     (next: Theme) => {
       setThemeState(next);
@@ -183,6 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // ---- signing in and out ----
   const refreshUser = useCallback(async () => {
     const info = await api.get<{ authenticated: boolean; user: CurrentUser | null }>('/api/auth/status');
     if (!info.authenticated || !info.user) {
@@ -235,6 +262,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStatus('login');
   }, []);
 
+  /** Saves changed settings and keeps the server's cleaned-up result. */
   const saveSettings = useCallback(async (patch: any) => {
     const result = await api.put<{ settings: AppSettings }>('/api/settings', patch);
     setSettings(result.settings);
@@ -245,6 +273,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return result.settings;
   }, []);
 
+  // Rebuilt only when something in it changes, so components do not redraw needlessly.
   const value = useMemo<AppValue>(
     () => ({
       status,
