@@ -87,9 +87,9 @@ Click any screenshot to see it full size.
 
 ## AI Disclosure
 
-PinchTube was majority written and coded by Claude Code (Opus 5.5). While I am technical and am able to code myself, this is a project I really wanted to create and coding everything myself would have taken me far longer than I have time to spare at the moment. I understand some may have an issue with AI being used and I ask that if you don't like the project, please don't use it. I am however very open to feedback and suggestions, and am keen to see PinchTube succeed!
+PinchTube was majority written and coded by Claude Code (Opus 5.5). While I am technical and am able to code myself, this is a project I really wanted to create and coding everything myself would have taken me far longer than I have time to spare at the moment. I understand some may have an issue with AI being used and I ask that if you don't like the project, please don't use it. I have tried to ensure the code is readable with comments and descriptions in  every source file, I am very open to any feedback and suggestions!
 
-I would like to mention however that since the code is written by Claude and I'm no security auditor, **I do not recommend hosting PinchTube publicly**. Please host it on your local LAN and use a VPN like Wireguard/Tailscale if you wish to access it remotely.
+Since the code is written by Claude and I'm no security auditor, **I do not recommend hosting PinchTube publicly**. Please host it on your local LAN and use a VPN like Wireguard/Tailscale if you wish to access it remotely.
 
 Thank you!
 
@@ -191,6 +191,7 @@ Channel Name/
 
 PinchTube is published as a ready-made image, so all you need is a compose file. Change
 `./media` under `volumes:` to your downloads folder; everything else works as it is.
+PinchTube is mounted read-only and does not touch your media files whatsoever.
 
 ```bash
 mkdir pinchtube && cd pinchtube
@@ -295,8 +296,8 @@ The first library scan starts on its own; you can follow it under **Settings →
 
 > [!WARNING]
 > PinchTube is designed for a private network: your LAN, or a VPN such as WireGuard or
-> Tailscale. I do not recommend exposing it to the public internet. If you do, put it
-> behind HTTPS and turn on two-factor sign-in for every account. See
+> Tailscale. I do not recommend exposing it to the public internet. If you must, at 
+> minimum put it behind HTTPS and turn on two-factor sign-in for every account. See
 > [Security](docs/GUIDE.md#security).
 
 ### Updating
@@ -326,4 +327,4 @@ available.
 ---
 
 <sub>PinchTube is a free and independent project. It is not affiliated with, endorsed by or
-connected to YouTube, Google or Pinchflat.</sub>
+connected to YouTube, Google, Pinchflat or Pinchflat-NGX.</sub>
