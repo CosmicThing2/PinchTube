@@ -30,6 +30,9 @@ It runs as a single Docker container. It is designed for a private network — s
 - **Playlists and a play queue.** Build playlists like on YouTube — reorder by dragging,
   loop, shuffle, a fixed quality per playlist — and optionally share them with the other
   users. The queue collects videos to play one after another.
+- **Downloads for later.** Save a video to the browser cache, where PinchTube plays it
+  without streaming, or save it to your device as an ordinary file — at the original
+  quality, a smaller one, or audio only.
 - **Works properly on a phone.** Bottom tab bar, touch scrubbing, double-tap to skip,
   fullscreen swipe gestures, a data saver mode, installable to the home screen.
 - **Bends to how you like it.** Theater mode, chapters, SponsorBlock segments (skipped
@@ -217,6 +220,45 @@ Data saver always wins over a playlist's or the queue's own quality, since its w
 a ceiling on data use.
 
 
+## Downloads
+
+**Download**, between **Save** and **YouTube** under the player, opens a box where you pick a
+quality and how to save it.
+
+- **Quality** — **Original** is the file itself. Any other quality (1080p, 720p…) or
+  **Audio only** is converted by the server first, on the GPU if there is one, so the
+  button shows *Preparing* before *Downloading*. Each choice shows a rough size, and none
+  goes above your **Maximum quality** setting.
+- **Save to browser cache** — the video is stored inside the browser, and from then on
+  PinchTube plays it from the cache whenever you open it, using no data. The quality menu
+  shows it as **Browser cache**, and you can still switch to streaming from there. You
+  still need a connection to the server to load PinchTube itself and open the video.
+- **Save to device** — an ordinary download to the device's Downloads folder, for use in
+  other apps and entirely offline. PinchTube cannot see or play these.
+
+Downloads carry on while you move around the app. On a phone, the **Downloads** page is the
+third tab under *Library*; on a computer, it is in the sidebar. It lists the videos saved to
+the browser cache, how much space they take and anything still in progress, with a sort
+menu (newest, oldest, recently downloaded, title A–Z or Z–A). **Delete all** removes every
+one, after you type "delete all" to confirm. Turn on **Organise downloads by channel** under
+Settings → Interface to see a grid of channels instead, each opening its own sortable list.
+
+Things to know about the browser cache:
+
+- It belongs to **one account in one browser**. Videos saved on your phone do not show on
+  your computer, and other accounts using the same browser cannot see or play yours.
+- **Clearing the browser's data for PinchTube removes them all.** The browser may also
+  clear them by itself if the device runs very low on space (Android) or if PinchTube has
+  not been opened for about a week (iPhone and iPad). Over HTTPS, PinchTube asks the
+  browser to keep them, which makes this less likely. It is good for weeks of watching
+  later, not as an archive — use **Save to device** for anything you want to keep.
+
+On the server, converted copies are kept in `cache/downloads` for a day after they are made,
+so another device or a retry does not convert again, and are then deleted. One conversion
+runs at a time with up to 20 waiting. **Clear transcode cache** under Settings → Transcoding
+empties them too.
+
+
 ## Transcoding
 
 The quality menu offers:
@@ -236,6 +278,11 @@ so rewatching costs nothing.
 
 If the browser cannot decode the original file — a VP9 or AV1 download on Safari, for
 example — the player notices the media error and switches itself to Auto.
+
+**Stats for nerds**, under the gear in the player, shows what is happening while a video
+plays: how far ahead it has loaded, the loading speed, stalls, dropped frames, and whether
+the server is encoding on the GPU or the CPU and how fast. It is the first place to look
+when a video keeps buffering.
 
 ### Hardware acceleration
 
@@ -394,17 +441,21 @@ server/src
     transcoder.ts       on-demand segment production
     hls.ts              playlist generation
     cache.ts            LRU eviction of cached segments
+    downloads.ts        whole-file copies for the Download button
     images.ts           thumbnail resizing
   routes/               HTTP endpoints
   lib/videos.ts         library queries, channel access, queue
   lib/playlists.ts      playlists
+  lib/send-file.ts      sending large files in byte ranges, and as downloads
 
 web/src
   main.tsx              routing
   lib/                  API client, formatting, app state
+  lib/offline.ts        videos saved to the browser cache, and downloads in progress
   components/           shell, cards, rails, panels, dialogs
-  pages/                home, videos, channels, watch, playlists, search, settings
+  pages/                home, videos, channels, watch, playlists, downloads, settings
   player/Player.tsx     the video player and its controls
+  player/StatsPanel.tsx Stats for nerds
 ```
 
 State lives in SQLite at `/config/ytmedia.db`. Video IDs are a hash of the path relative to
@@ -452,6 +503,14 @@ could not read it. Run a **Full rescan** from Settings → Library.
 
 **A user cannot see a channel** — check **All channels**, or the channel ticks, for that
 user under Settings → Users.
+
+**Downloaded videos have disappeared** — they live in the browser, so clearing its data for
+PinchTube, using a different browser or account, or the browser freeing space removes or
+hides them. See [Downloads](#downloads).
+
+**"Too many downloads are being prepared"** — the server converts one video at a time with
+up to 20 waiting. Wait for some to finish, or download at **Original**, which needs no
+converting.
 
 **The container will not start, with a permission error** — the entrypoint should fix the
 ownership of `config` and `cache` on its own. If you have set `user:` in the compose file it

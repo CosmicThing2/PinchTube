@@ -1,5 +1,5 @@
 /*
- * offline.ts — videos downloaded to this device, and the downloads in progress.
+ * offline.ts — videos saved to the browser cache, and the downloads in progress.
  *
  * A web page cannot save a file somewhere and read it back later, but it can
  * keep data in the browser's own storage for the site (IndexedDB). "Save to
@@ -15,8 +15,9 @@
  *
  * Each stored video is tagged with the account that saved it, and only that
  * account sees or plays it, so a shared device does not leak one person's
- * downloads to another. Used by components/DownloadDialog.tsx,
- * pages/Downloads.tsx and pages/Watch.tsx.
+ * downloads to another. Its channel and publish date are kept too, for the
+ * Downloads page's sorting and channel grid. Used by
+ * components/DownloadDialog.tsx, pages/Downloads.tsx and pages/Watch.tsx.
  */
 
 import { useEffect, useState } from 'react';
@@ -24,7 +25,7 @@ import { api, urls, type DownloadStatus } from './api';
 
 // ---- what is stored ---------------------------------------------------------
 
-/** One video kept on this device. Its bytes are stored separately, as pieces. */
+/** One video in the browser cache. Its bytes are stored separately, as pieces. */
 export interface OfflineVideo {
   /** "<user id>:<video id>". */
   key: string;

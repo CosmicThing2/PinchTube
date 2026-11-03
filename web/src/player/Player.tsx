@@ -325,6 +325,27 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     return () => query.removeEventListener('change', onChange);
   }, []);
 
+  // An open menu closes when anything else is pressed (the picture, another
+  // control, the page around the player) or Escape is pressed. The buttons
+  // that open menus are left to openMenu(), so pressing one still toggles.
+  useEffect(() => {
+    if (!menu) return;
+    const onPress = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.('.player-menu, [data-menu-button]')) return;
+      setMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenu(null);
+    };
+    document.addEventListener('pointerdown', onPress, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPress, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+
   /** A short message over the picture, e.g. after switching quality automatically. */
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -1122,6 +1143,8 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   };
 
   const onSurfacePointer = (event: ReactPointerEvent) => {
+    // A press that only closes an open menu does nothing else.
+    if (menu) return;
     if (
       (event.target as HTMLElement).closest(
         '.player-controls, .player-menu, .player-bigplay, .sponsor-skip',
@@ -1520,6 +1543,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
             {video.subtitles.length ? (
               <button
                 className="pbtn"
+                data-menu-button
                 onClick={() => openMenu('captions')}
                 aria-label="Subtitles"
                 style={captions >= 0 ? { color: 'var(--accent)' } : undefined}
@@ -1529,12 +1553,13 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
             ) : null}
 
             {/* On a phone this lives in the gear's combined menu instead */}
-            <button className="pbtn text hide-sm" onClick={() => openMenu('quality')}>
+            <button className="pbtn text hide-sm" data-menu-button onClick={() => openMenu('quality')}>
               {qualityLabel}
             </button>
 
             <button
               className="pbtn"
+              data-menu-button
               onClick={() => openMenu(narrow ? 'root' : 'speed')}
               aria-label="Playback settings"
             >
