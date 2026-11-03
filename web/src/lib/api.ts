@@ -274,7 +274,7 @@ export interface AppSettings {
     cacheSizeGb: number;
     maxConcurrentJobs: number;
   };
-  ui: { defaultSort: string; hideWatched: boolean; pageSize: number };
+  ui: { defaultSort: string; hideWatched: boolean; pageSize: number; downloadsByChannel: boolean };
 }
 
 export type CodecKey = 'h264' | 'vp9' | 'av1' | 'hevc' | 'other';

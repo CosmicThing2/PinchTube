@@ -8,7 +8,7 @@
  *     browser's own HLS support on Safari), with the server making segments
  *     on demand (server/src/routes/stream.ts and media/transcoder.ts)
  *   - audio only
- *   - "This device": a copy kept in the browser (lib/offline.ts), which
+ *   - "Browser cache": a copy saved in the browser (lib/offline.ts), which
  *     always comes first when there is one, since it uses no data
  * Which one is chosen depends on the quality menu, the default quality
  * settings, data saver, and a queue's or playlist's own quality.
@@ -112,7 +112,7 @@ interface Props {
   trackButtons?: boolean;
   /** Coarse position updates (about once a second) for things outside the player. */
   onTime?: (seconds: number) => void;
-  /** A copy kept on this device: where to play it from, and its quality's name. */
+  /** A copy in the browser cache: where to play it from, and its quality's name. */
   offline?: { url: string; label: string } | null;
 }
 
@@ -248,7 +248,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   const flashTimer = useRef(0);
   const lastTapRef = useRef<{ time: number; side: 'left' | 'right' | null }>({ time: 0, side: null });
 
-  // A copy on this device beats every other choice: it costs no data at all.
+  // A copy in the browser cache beats every other choice: it costs no data at all.
   const hasOffline = offline !== null;
   const preferred = useMemo(
     () => (hasOffline ? 'device' : preferredFor(playback, dataSaver, forcedQuality)),
@@ -301,7 +301,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   const useHlsJs = useMemo(() => Hls.isSupported(), []);
   const isOriginal = quality === 'original' && playback.original.available;
   const isDevice = quality === 'device' && offline !== null;
-  /** Playing a whole file (from the server or this device) rather than HLS. */
+  /** Playing a whole file (from the server or the browser cache) rather than HLS. */
   const isDirect = isOriginal || isDevice;
   const isAudio = quality === 'audio';
 
@@ -544,7 +544,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       if (isDirect) {
         resumeRef.current = element.currentTime || resumeRef.current;
         setQuality('auto');
-        showToast(isDevice ? 'The copy on this device would not play — switched to Auto' : 'This file needs transcoding — switched to Auto');
+        showToast(isDevice ? 'The copy in the browser cache would not play — switched to Auto' : 'This file needs transcoding — switched to Auto');
       } else {
         setError('Playback failed. Check the server logs for ffmpeg errors.');
       }
@@ -1239,7 +1239,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       : quality === 'original'
         ? 'Original'
         : quality === 'device'
-          ? 'This device'
+          ? 'Cached'
           : quality === 'audio'
             ? 'Audio'
             : quality;
@@ -1606,7 +1606,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
           <MenuHead title="Quality" onBack={fromRoot ? () => setMenu('root') : undefined} />
           {offline ? (
             <MenuItem
-              label="This device"
+              label="Browser cache"
               hint={offline.label}
               selected={quality === 'device'}
               onClick={() => switchQuality('device')}

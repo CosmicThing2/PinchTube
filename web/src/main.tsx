@@ -32,7 +32,7 @@ import { Settings } from './pages/Settings';
 import { Queue } from './pages/Queue';
 import { Playlists } from './pages/Playlists';
 import { Playlist } from './pages/Playlist';
-import { Downloads } from './pages/Downloads';
+import { Downloads, DownloadsChannel } from './pages/Downloads';
 import { lastLibraryPage } from './components/LibrarySwitch';
 import { QueueProvider } from './lib/queue-context';
 import { applyColours, readCachedColours } from './lib/accent';
@@ -70,6 +70,7 @@ function Router() {
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/playlist/:id" element={<Playlist />} />
         <Route path="/downloads" element={<Downloads />} />
+        <Route path="/downloads/channel/:key" element={<DownloadsChannel />} />
         <Route path="/library" element={<Navigate to={lastLibraryPage()} replace />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />

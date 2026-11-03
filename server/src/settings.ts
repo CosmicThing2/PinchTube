@@ -152,6 +152,8 @@ export interface AppSettings {
     defaultSort: 'date_desc' | 'date_asc' | 'title_asc' | 'added_desc';
     hideWatched: boolean;
     pageSize: number;
+    /** Show the Downloads page as a grid of channels rather than one list. */
+    downloadsByChannel: boolean;
   };
 }
 
@@ -216,6 +218,7 @@ export const defaultSettings: AppSettings = {
     defaultSort: 'date_desc',
     hideWatched: false,
     pageSize: 48,
+    downloadsByChannel: false,
   },
 };
 
@@ -413,6 +416,7 @@ function clampSettings(s: AppSettings): void {
   s.transcode.cacheSizeGb = Math.min(2000, Math.max(1, Number(s.transcode.cacheSizeGb) || 20));
   s.transcode.maxConcurrentJobs = clampInt(s.transcode.maxConcurrentJobs, 1, 10, 3);
   s.ui.pageSize = clampInt(s.ui.pageSize, 12, 200, 48);
+  s.ui.downloadsByChannel = s.ui.downloadsByChannel === true;
   if (!['system', 'dark', 'light'].includes(s.appearance.theme)) s.appearance.theme = 'system';
 
   const size = s.appearance.cardSize as string;

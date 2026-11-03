@@ -14,7 +14,8 @@
  * the "when moving on" setting), ?list=<id> through a playlist
  * (lib/playlist-playback.ts), and otherwise autoplay moves on to the channel's
  * next video if that setting is on. Progress is saved as it plays. A video
- * kept on this device (lib/offline.ts) plays from there instead of streaming.
+ * saved to the browser cache (lib/offline.ts) plays from there instead of
+ * streaming.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -73,7 +74,7 @@ export function Watch() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
 
-  // A copy kept on this device (lib/offline.ts): its details for the Download
+  // A copy in the browser cache (lib/offline.ts): its details for the Download
   // button, and a playable address so the player can use it instead of
   // streaming. `device` stays undefined until the check is done, and the
   // player waits for it, so it does not start streaming first.
@@ -465,7 +466,7 @@ export function Watch() {
             <button
               className={saved ? 'btn btn-on' : 'btn'}
               onClick={() => setDownloadOpen(true)}
-              title={saved ? 'Kept on this device' : 'Download'}
+              title={saved ? 'Saved to the browser cache' : 'Download'}
             >
               {saved ? <IconCheck /> : <IconDownload />}
               {downloadTask && downloadTask.phase !== 'failed'

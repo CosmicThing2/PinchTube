@@ -2,11 +2,11 @@
  * offline.ts — videos downloaded to this device, and the downloads in progress.
  *
  * A web page cannot save a file somewhere and read it back later, but it can
- * keep data in the browser's own storage for the site (IndexedDB). "Keep on
- * this device" downloads a video into that storage in pieces of a few MB, so
- * a big video never has to sit in memory all at once; the watch page then
- * plays it from there instead of streaming (see offlineSource()). "Save as a
- * file" just hands the browser a normal download instead.
+ * keep data in the browser's own storage for the site (IndexedDB). "Save to
+ * browser cache" downloads a video into that storage in pieces of a few MB,
+ * so a big video never has to sit in memory all at once; the watch page then
+ * plays it from there instead of streaming (see offlineSource()). "Save to
+ * device" just hands the browser a normal download instead.
  *
  * For any quality other than Original, the server first converts the whole
  * video (server/src/routes/downloads.ts); the progress of that "preparing"
@@ -32,6 +32,10 @@ export interface OfflineVideo {
   videoId: string;
   title: string;
   channelTitle: string;
+  /** Missing on copies saved before it was recorded, until completeDetails() fills it in. */
+  channelId?: string;
+  /** When the video was published (ms), for sorting by date. */
+  aired?: number | null;
   /** 'original', '720p', 'audio'… and how to show it. */
   quality: string;
   qualityLabel: string;
@@ -58,6 +62,8 @@ export interface DownloadRequest {
   videoId: string;
   title: string;
   channelTitle: string;
+  channelId: string;
+  aired: number | null;
   quality: string;
   qualityLabel: string;
   mode: 'device' | 'file';
@@ -138,6 +144,83 @@ export async function removeOffline(userId: number, videoId: string): Promise<vo
     tx.objectStore('pieces').delete(piecesOf(key));
   });
   changed();
+}
+
+/** Deletes every video this account has downloaded; other accounts' are kept. */
+export async function removeAllOffline(userId: number): Promise<void> {
+  const keys = (await listOffline(userId)).map((video) => video.key);
+  if (!keys.length) return;
+  await run(['videos', 'pieces'], 'readwrite', (tx) => {
+    for (const key of keys) {
+      tx.objectStore('videos').delete(key);
+      tx.objectStore('pieces').delete(piecesOf(key));
+    }
+  });
+  changed();
+}
+
+/** The ways the Downloads page can be sorted, in menu order. */
+export const OFFLINE_SORTS = [
+  { value: 'date_desc', label: 'Newest first' },
+  { value: 'date_asc', label: 'Oldest first' },
+  { value: 'saved_desc', label: 'Recently downloaded' },
+  { value: 'title_asc', label: 'Title A–Z' },
+  { value: 'title_desc', label: 'Title Z–A' },
+];
+
+/** A sorted copy of a list; videos with no known date go last either way. */
+export function sortOffline(videos: OfflineVideo[], sort: string): OfflineVideo[] {
+  const byTitle = (a: OfflineVideo, b: OfflineVideo) =>
+    a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
+  const byDate = (direction: 1 | -1) => (a: OfflineVideo, b: OfflineVideo) => {
+    if (a.aired == null || b.aired == null) return (a.aired == null ? 1 : 0) - (b.aired == null ? 1 : 0);
+    return (a.aired - b.aired) * direction;
+  };
+  const compare =
+    sort === 'date_desc'
+      ? byDate(-1)
+      : sort === 'date_asc'
+        ? byDate(1)
+        : sort === 'title_asc'
+          ? byTitle
+          : sort === 'title_desc'
+            ? (a: OfflineVideo, b: OfflineVideo) => byTitle(b, a)
+            : (a: OfflineVideo, b: OfflineVideo) => b.savedAt - a.savedAt;
+  return [...videos].sort(compare);
+}
+
+/**
+ * Copies saved before the channel and publish date were recorded are missing
+ * them; this asks the server for them and stores them, so grouping by channel
+ * and sorting by date work for those too. Videos the server no longer has are
+ * left as they are.
+ */
+export async function completeDetails(videos: OfflineVideo[]): Promise<OfflineVideo[]> {
+  const missing = videos.filter((video) => !video.channelId);
+  if (!missing.length) return videos;
+  const filled = new Map<string, OfflineVideo>();
+  await Promise.all(
+    missing.map(async (video) => {
+      try {
+        const data = await api.get<{ video: { channelId: string; channelTitle: string; aired: number | null } }>(
+          `/api/videos/${encodeURIComponent(video.videoId)}`,
+        );
+        filled.set(video.key, {
+          ...video,
+          channelId: data.video.channelId,
+          channelTitle: data.video.channelTitle,
+          aired: data.video.aired,
+        });
+      } catch {
+        // Gone from the library, or the server is unreachable: try again next time.
+      }
+    }),
+  );
+  if (!filled.size) return videos;
+  await run(['videos'], 'readwrite', (tx) => {
+    for (const video of filled.values()) tx.objectStore('videos').put(video);
+  }).catch(() => {});
+  return videos.map((video) => filled.get(video.key) ?? video);
 }
 
 /**
@@ -296,6 +379,8 @@ async function store(request: DownloadRequest, url: string, signal: AbortSignal)
       videoId: request.videoId,
       title: request.title,
       channelTitle: request.channelTitle,
+      channelId: request.channelId,
+      aired: request.aired,
       quality: request.quality,
       qualityLabel: request.qualityLabel,
       mime,

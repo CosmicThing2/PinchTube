@@ -4,7 +4,8 @@
  *   Select        a drop-down that looks the same in every browser
  *   Spinner       the loading indicator
  *   EmptyState    the "nothing here" message with an icon
- *   ChannelCard   a channel's avatar, name and video count (Channels page)
+ *   ChannelCard   a channel's avatar, name and video count (Channels and
+ *                 Downloads pages)
  *   SkeletonGrid  grey placeholder cards shown while a page loads
  *   Dialog        a pop-up window (a sheet from the bottom on a phone)
  */
@@ -89,9 +90,19 @@ export function EmptyState({
 }
 
 /** A channel tile: avatar, name, video count and how many are new. */
-export function ChannelCard({ channel }: { channel: ChannelDto }) {
+export function ChannelCard({
+  channel,
+  to = `/channel/${channel.id}`,
+  detail,
+}: {
+  channel: Pick<ChannelDto, 'id' | 'title' | 'videoCount' | 'unwatchedCount'>;
+  /** Where it leads; the channel's own page unless given. */
+  to?: string;
+  /** Shown in place of the video count. */
+  detail?: ReactNode;
+}) {
   return (
-    <Link className="channel-card" to={`/channel/${channel.id}`}>
+    <Link className="channel-card" to={to}>
       <img
         className="avatar-lg"
         src={urls.channelArt(channel.id, 'poster', 240)}
@@ -104,10 +115,14 @@ export function ChannelCard({ channel }: { channel: ChannelDto }) {
       <div className="channel-card-body">
         <h3>{channel.title}</h3>
         <p>
-          {formatCount(channel.videoCount, 'video')}
-          {channel.unwatchedCount > 0 ? (
-            <span className="new"> · {channel.unwatchedCount} new</span>
-          ) : null}
+          {detail ?? (
+            <>
+              {formatCount(channel.videoCount, 'video')}
+              {channel.unwatchedCount > 0 ? (
+                <span className="new"> · {channel.unwatchedCount} new</span>
+              ) : null}
+            </>
+          )}
         </p>
       </div>
     </Link>

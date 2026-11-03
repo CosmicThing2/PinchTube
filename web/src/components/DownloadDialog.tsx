@@ -3,12 +3,12 @@
  *
  * Pick a quality (Original, a converted quality such as 720p, or audio only,
  * each with a rough size), then either:
- *   - "Keep on this device": saved inside the browser, and from then on the
- *     video plays from the device whenever it is opened here
- *   - "Save as a file": a normal download to the device's Downloads folder
+ *   - "Save to browser cache": saved inside the browser, and from then on
+ *     the video plays from the cache whenever it is opened here
+ *   - "Save to device": a normal download to the device's Downloads folder
  * Anything but Original is converted by the server first, shown as
  * "Preparing…". Downloads carry on if the dialog is closed. For a video
- * already kept on the device it shows that, with a button to remove it.
+ * already in the browser cache it shows that, with a button to remove it.
  * The work itself is done by lib/offline.ts.
  */
 
@@ -53,7 +53,7 @@ export function DownloadDialog({
 }: {
   data: WatchPayload;
   userId: number;
-  /** The copy already kept on this device, if there is one. */
+  /** The copy already in the browser cache, if there is one. */
   saved: OfflineVideo | null;
   onClose: () => void;
 }) {
@@ -70,6 +70,8 @@ export function DownloadDialog({
       videoId: data.video.id,
       title: data.video.title,
       channelTitle: data.video.channelTitle,
+      channelId: data.video.channelId,
+      aired: data.video.aired,
       quality: chosen.value,
       qualityLabel: chosen.label,
       mode,
@@ -80,14 +82,14 @@ export function DownloadDialog({
 
   return (
     <Dialog title="Download" onClose={onClose} width={440}>
-      {/* Already kept on this device */}
+      {/* Already in the browser cache */}
       {saved ? (
         <div className="download-saved">
           <IconCheck />
           <div className="grow">
-            <div className="label">On this device</div>
+            <div className="label">In the browser cache</div>
             <div className="hint">
-              {saved.qualityLabel} · {formatBytes(saved.size)}. Plays from here whenever you open it.
+              {saved.qualityLabel} · {formatBytes(saved.size)}. Plays from the cache whenever you open it.
             </div>
           </div>
           <button className="btn" onClick={() => void removeOffline(userId, data.video.id)}>
@@ -145,15 +147,17 @@ export function DownloadDialog({
           <div className="download-actions">
             <button className="btn primary" disabled={busy} onClick={() => begin('device')}>
               <IconDownload />
-              Keep on this device
+              Save to browser cache
             </button>
             <button className="btn" disabled={busy} onClick={() => begin('file')}>
-              Save as a file
+              Save to device
             </button>
           </div>
           <p className="hint" style={{ marginTop: 10 }}>
-            “Keep on this device” stores it in this browser and plays it from there. “Save as a file” puts it in
-            your Downloads folder for other apps; PinchTube cannot play it from there.
+            Saving to the browser cache is seamless and PinchTube will automatically play videos from the cache,
+            however you still need an internet connection to load the PinchTube site itself and then open the
+            video. Saving to device will fully download the video for use in other apps and is entirely offline,
+            but PinchTube cannot see it or play it.
           </p>
         </>
       )}

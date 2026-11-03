@@ -7,7 +7,8 @@
  *   Home page     which home rows show, in what order, and per-channel rows
  *   Playback      default qualities, autoplay, SponsorBlock, gestures, subtitles...
  *   Transcoding   hardware encoding, quality preset, cache            (admin)
- *   Interface     theme, colours, card size, layout, browsing defaults
+ *   Interface     theme, colours, card size, layout, browsing defaults,
+ *                 downloads by channel
  *   Password      change your own password
  *   Two-factor    sign-in codes from an app (components/TwoFactorPanel.tsx)
  *   Users         accounts and their access    (admin; components/UsersPanel.tsx)
@@ -1236,6 +1237,21 @@ export function Settings() {
             onChange={(value) =>
               update((current) => {
                 current.ui.hideWatched = value;
+                return current;
+              })
+            }
+          />
+        </Row>
+
+        <Row
+          label="Organise downloads by channel"
+          hint="The Downloads page shows the channels you have downloaded from; open one to see its videos."
+        >
+          <Toggle
+            checked={draft.ui.downloadsByChannel === true}
+            onChange={(value) =>
+              update((current) => {
+                current.ui.downloadsByChannel = value;
                 return current;
               })
             }
