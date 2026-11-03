@@ -87,6 +87,16 @@ const WARM_SEGMENTS = 3;
 /** Videos whose hardware pipeline failed — these stay on software for this run. */
 const hwBlocklist = new Set<string>();
 
+/** The hardware route for encoding a video at a rendition, or null for software. */
+export function accelFor(videoId: string, rendition: Rendition): Accel | null {
+  return isAudioOnly(rendition) || hwBlocklist.has(videoId) ? null : chosenAccel();
+}
+
+/** Keeps a video on software encoding after the hardware could not handle it. */
+export function markHardwareFailed(videoId: string): void {
+  hwBlocklist.add(videoId);
+}
+
 /** The timer that stops idle jobs and trims the cache. */
 let reaper: NodeJS.Timeout | null = null;
 let log: { info: (m: string) => void; warn: (m: string) => void; debug: (m: string) => void } = {
@@ -163,7 +173,6 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
   ];
   const start = startSegment * segmentSeconds;
   const gop = Math.max(1, Math.round(segmentSeconds * 30));
-  const settings = getSettings();
 
   const args: string[] = ['-hide_banner', '-loglevel', 'error', '-nostdin'];
 
@@ -180,8 +189,41 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
   }
 
   // ---- video: decoding, scaling and encoding, per hardware route ----
-  // Decoding happens on the GPU too where possible, so frames never have to
-  // make the round trip through system memory.
+  args.push(...hwDecodeArgs(accel));
+
+  // Start at the requested segment's time, and keep only the first video and audio stream.
+  if (start > 0) args.push('-ss', String(start));
+  args.push('-i', source.path);
+
+  args.push('-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn');
+  args.push(...videoEncodeArgs(source, rendition, accel));
+
+  // Keyframes exactly on segment boundaries keep every segment independently
+  // decodable, which is what makes seeking and quality switching work.
+  args.push('-force_key_frames', `expr:gte(t,n_forced*${segmentSeconds})`);
+  args.push('-g', String(gop));
+  args.push('-keyint_min', String(gop));
+
+  // Audio: stereo AAC, which every browser plays.
+  args.push('-c:a', 'aac', '-b:a', `${rendition.audioBitrate}k`, '-ac', '2', '-ar', '48000');
+
+  // The encoder always sees a timeline starting at zero, but the segments must
+  // carry their real position in the video: without this, a job started after a
+  // seek would emit timestamps from 0 again and the player would lose its place.
+  if (start > 0) args.push('-output_ts_offset', String(start));
+  args.push('-muxdelay', '0', '-muxpreload', '0');
+
+  args.push(...muxer);
+
+  return args;
+}
+
+/**
+ * Input options that keep decoding on the GPU where possible, so frames never
+ * have to make the round trip through system memory. Goes before `-i`.
+ */
+export function hwDecodeArgs(accel: Accel | null): string[] {
+  const args: string[] = [];
   if (accel?.kind === 'vaapi' && accel.device) {
     args.push('-hwaccel', 'vaapi', '-hwaccel_device', accel.device, '-hwaccel_output_format', 'vaapi');
   } else if (accel?.kind === 'qsv' && accel.device) {
@@ -191,13 +233,16 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
     args.push('-hwaccel', 'cuda');
     if (accel.gpuScale) args.push('-hwaccel_output_format', 'cuda');
   }
+  return args;
+}
 
-  // Start at the requested segment's time, and keep only the first video and audio stream.
-  if (start > 0) args.push('-ss', String(start));
-  args.push('-i', source.path);
-
-  args.push('-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn');
-
+/**
+ * Scaling to the rendition's size and encoding it as H.264, per hardware
+ * route (or in software). Shared by streaming and by downloads (downloads.ts).
+ */
+export function videoEncodeArgs(source: TranscodeSource, rendition: Rendition, accel: Accel | null): string[] {
+  const args: string[] = [];
+  const settings = getSettings();
   const frame = outputSize(source.width, source.height, rendition.size);
   const size = (w: string, h: string) => `${w}=${frame.width ?? -2}:${h}=${frame.height}`;
   const scaleTo = `${frame.width ?? -2}:${frame.height}`;
@@ -228,24 +273,6 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
     args.push('-bufsize', `${rendition.bufsize}k`);
     args.push('-sc_threshold', '0');
   }
-
-  // Keyframes exactly on segment boundaries keep every segment independently
-  // decodable, which is what makes seeking and quality switching work.
-  args.push('-force_key_frames', `expr:gte(t,n_forced*${segmentSeconds})`);
-  args.push('-g', String(gop));
-  args.push('-keyint_min', String(gop));
-
-  // Audio: stereo AAC, which every browser plays.
-  args.push('-c:a', 'aac', '-b:a', `${rendition.audioBitrate}k`, '-ac', '2', '-ar', '48000');
-
-  // The encoder always sees a timeline starting at zero, but the segments must
-  // carry their real position in the video: without this, a job started after a
-  // seek would emit timestamps from 0 again and the player would lose its place.
-  if (start > 0) args.push('-output_ts_offset', String(start));
-  args.push('-muxdelay', '0', '-muxpreload', '0');
-
-  args.push(...muxer);
-
   return args;
 }
 
@@ -318,7 +345,7 @@ async function startJob(
   await fsp.mkdir(dir, { recursive: true });
   await enforceJobLimit();
 
-  const accel = isAudioOnly(rendition) || hwBlocklist.has(source.id) ? null : chosenAccel();
+  const accel = accelFor(source.id, rendition);
 
   const base = {
     key,
@@ -374,7 +401,7 @@ async function startJob(
       if (job.usedHw && producedNothing) {
         // The GPU pipeline could not handle this file (odd codec, 10-bit, ...).
         log.warn(`transcode: disabling hardware encoding for video ${source.id}, retrying in software`);
-        hwBlocklist.add(source.id);
+        markHardwareFailed(source.id);
         void oneAtATime(() => startJob(source, rendition, startSegment, segmentSeconds)).catch(() => {});
         return;
       }
@@ -530,7 +557,7 @@ export async function warmSegments(source: TranscodeSource, rendition: Rendition
     }
 
     await fsp.mkdir(dir, { recursive: true });
-    const accel = isAudioOnly(rendition) || hwBlocklist.has(source.id) ? null : chosenAccel();
+    const accel = accelFor(source.id, rendition);
     const plan: JobPlan = {
       key,
       videoId: source.id,

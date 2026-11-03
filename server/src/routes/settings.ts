@@ -31,6 +31,7 @@ import { hardwareCapabilities, hardwareStatus } from '../media/hwaccel.js';
 import { APP_VERSION } from '../version.js';
 import { activeJobs, resetTranscodes } from '../media/transcoder.js';
 import { cacheSizeBytes, clearImageCache } from '../media/cache.js';
+import { clearDownloads } from '../media/downloads.js';
 import { QUALITY_CHOICES } from '../media/renditions.js';
 import { libraryStats } from '../lib/videos.js';
 
@@ -112,7 +113,10 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
   app.post('/api/settings/cache/clear', adminOnly, async (request) => {
     const body = (request.body ?? {}) as any;
     const which = body.which === 'images' || body.which === 'transcode' ? body.which : 'all';
-    if (which === 'transcode' || which === 'all') await resetTranscodes();
+    if (which === 'transcode' || which === 'all') {
+      await resetTranscodes();
+      await clearDownloads();
+    }
     if (which === 'images' || which === 'all') await clearImageCache();
     return { ok: true, cleared: which };
   });

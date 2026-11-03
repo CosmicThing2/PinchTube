@@ -3,7 +3,8 @@
  *
  * Two ways to play a video:
  *   - "Original": GET /api/stream/:id/original sends the file itself,
- *     supporting byte ranges so the browser can seek and load in pieces.
+ *     supporting byte ranges so the browser can seek and load in pieces
+ *     (?download=1 saves it as a file instead).
  *   - Converted qualities, over HLS:
  *       GET  /api/stream/:id/master.m3u8              the qualities on offer
  *       GET  /api/stream/:id/:quality/index.m3u8      that quality's segment list
@@ -23,6 +24,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { getSettings, settingsFor } from '../settings.js';
 import { getVideo, parseSubtitles } from '../lib/videos.js';
+import { downloadName, sendMediaFile } from '../lib/send-file.js';
 import { allowOriginal, findRendition, renditionsFor, shortSide } from '../media/renditions.js';
 import { masterPlaylist, segmentCountFor, variantPlaylist } from '../media/hls.js';
 import { encodeStatus, ensureSegment, warmSegments, type TranscodeSource } from '../media/transcoder.js';
@@ -52,6 +54,7 @@ function srtToVtt(input: string): string {
 
 export function registerStreamRoutes(app: FastifyInstance): void {
   // ---- direct play of the untouched file, with byte-range support ----------
+  // ?download=1 saves it as a file instead (the Download button).
   app.get('/api/stream/:id/original', async (request, reply) => {
     const { id } = request.params as any;
     const row = getVideo(request.user!, String(id));
@@ -60,50 +63,10 @@ export function registerStreamRoutes(app: FastifyInstance): void {
       return reply.code(403).send({ error: 'Original quality is disabled in settings' });
     }
 
-    let stat: fs.Stats;
-    try {
-      stat = await fsp.stat(row.path);
-    } catch {
-      return reply.code(404).send({ error: 'File is missing from disk' });
-    }
-
-    const contentType = CONTAINER_TYPES[path.extname(row.path).toLowerCase()] ?? 'application/octet-stream';
-    reply.header('Accept-Ranges', 'bytes');
-    reply.header('Content-Type', contentType);
-    reply.header('Cache-Control', 'private, max-age=3600');
-
-    // A range request ("bytes=1000-") gets just that part of the file.
-    const range = request.headers.range;
-    if (range) {
-      const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-      if (match) {
-        const hasStart = match[1] !== '';
-        const hasEnd = match[2] !== '';
-        let start = hasStart ? parseInt(match[1], 10) : 0;
-        let end = hasEnd ? parseInt(match[2], 10) : stat.size - 1;
-
-        if (!hasStart && hasEnd) {
-          // "bytes=-500" means the final 500 bytes.
-          start = Math.max(0, stat.size - parseInt(match[2], 10));
-          end = stat.size - 1;
-        }
-
-        if (start >= stat.size || start > end) {
-          reply.header('Content-Range', `bytes */${stat.size}`);
-          return reply.code(416).send();
-        }
-        end = Math.min(end, stat.size - 1);
-
-        reply.code(206);
-        reply.header('Content-Range', `bytes ${start}-${end}/${stat.size}`);
-        reply.header('Content-Length', String(end - start + 1));
-        return reply.send(fs.createReadStream(row.path, { start, end }));
-      }
-    }
-
-    // No range asked for: the whole file.
-    reply.header('Content-Length', String(stat.size));
-    return reply.send(fs.createReadStream(row.path));
+    const extension = path.extname(row.path).toLowerCase();
+    const contentType = CONTAINER_TYPES[extension] ?? 'application/octet-stream';
+    const saveAs = (request.query as any)?.download === '1' ? downloadName(row.title, extension.slice(1) || 'mp4') : undefined;
+    return sendMediaFile(request, reply, row.path, contentType, saveAs);
   });
 
   // ---- HLS ----------------------------------------------------------------

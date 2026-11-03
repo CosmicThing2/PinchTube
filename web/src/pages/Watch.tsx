@@ -5,7 +5,7 @@
  * lays out:
  *   - the player itself (player/Player.tsx)
  *   - title, channel, and buttons: mark watched, queue, save to playlist,
- *     open on YouTube
+ *     download (components/DownloadDialog.tsx), open on YouTube
  *   - the description with clickable links and timestamps (lib/linkify.tsx),
  *     and the chapter list, which follows playback
  *   - a side column with the queue or playlist box and "More from" the channel
@@ -13,7 +13,8 @@
  * opened: ?queue=1 plays through the queue (lib/queue-context.tsx, applying
  * the "when moving on" setting), ?list=<id> through a playlist
  * (lib/playlist-playback.ts), and otherwise autoplay moves on to the channel's
- * next video if that setting is on. Progress is saved as it plays.
+ * next video if that setting is on. Progress is saved as it plays. A video
+ * kept on this device (lib/offline.ts) plays from there instead of streaming.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,6 +24,14 @@ import { Player, type PlayerHandle } from '../player/Player';
 import { QueuePanel } from '../components/QueuePanel';
 import { PlaylistPanel } from '../components/PlaylistPanel';
 import { SaveToPlaylist } from '../components/SaveToPlaylist';
+import { DownloadDialog } from '../components/DownloadDialog';
+import {
+  getOffline,
+  offlineSource,
+  useDownloadTask,
+  useOfflineVersion,
+  type OfflineVideo,
+} from '../lib/offline';
 import { usePlaylistPlayback } from '../lib/playlist-playback';
 import { EmptyState, Spinner } from '../components/Common';
 import { useApp } from '../lib/app-context';
@@ -31,7 +40,15 @@ import { linkify } from '../lib/linkify';
 import { chapterOwning, uniqueChapters } from '../lib/chapters';
 import { VideoListItem } from '../components/VideoCard';
 import { formatBytes, formatDate, formatDuration, shortSide } from '../lib/format';
-import { IconCheck, IconEye, IconEyeOff, IconPlaylistAdd, IconQueue, IconYouTube } from '../components/Icons';
+import {
+  IconCheck,
+  IconDownload,
+  IconEye,
+  IconEyeOff,
+  IconPlaylistAdd,
+  IconQueue,
+  IconYouTube,
+} from '../components/Icons';
 
 export function Watch() {
   const { id = '' } = useParams();
@@ -41,7 +58,7 @@ export function Watch() {
   const [expanded, setExpanded] = useState(false);
   const [watched, setWatched] = useState(false);
   // Held in app state so the shell can collapse its nav to match.
-  const { theater, toggleTheater, settings, dataSaver } = useApp();
+  const { theater, toggleTheater, settings, dataSaver, user } = useApp();
   const playerRef = useRef<PlayerHandle>(null);
   /** Coarse playback position, so the chapter list can follow along. */
   const [currentTime, setCurrentTime] = useState(0);
@@ -54,6 +71,66 @@ export function Watch() {
   const playingList = listId !== null && list.playlist !== null;
   const [listPanelOpen, setListPanelOpen] = useState(true);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+
+  // A copy kept on this device (lib/offline.ts): its details for the Download
+  // button, and a playable address so the player can use it instead of
+  // streaming. `device` stays undefined until the check is done, and the
+  // player waits for it, so it does not start streaming first.
+  const offlineVersion = useOfflineVersion();
+  const downloadTask = useDownloadTask(id);
+  const [saved, setSaved] = useState<OfflineVideo | null>(null);
+  const [device, setDevice] = useState<{ url: string; label: string } | null | undefined>(undefined);
+  /** The address handed to the player, kept until the stored copy itself changes. */
+  const deviceRef = useRef<{ key: string; savedAt: number; url: string } | null>(null);
+  const checkedKey = useRef<string | null>(null);
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    const key = `${userId}:${id}`;
+    const forget = () => {
+      if (deviceRef.current) URL.revokeObjectURL(deviceRef.current.url);
+      deviceRef.current = null;
+    };
+    // A different video: start from "not checked yet" so the player waits.
+    if (checkedKey.current !== key) {
+      checkedKey.current = key;
+      forget();
+      setSaved(null);
+      setDevice(undefined);
+    }
+    void (async () => {
+      const meta = userId === null ? null : await getOffline(userId, id).catch(() => null);
+      if (cancelled) return;
+      // Something else was stored or removed, but not this video's copy: keep
+      // the address the player already has.
+      const current = deviceRef.current;
+      if (meta && current && current.savedAt === meta.savedAt) {
+        setSaved(meta);
+        return;
+      }
+      const source = meta && userId !== null ? await offlineSource(userId, id).catch(() => null) : null;
+      if (cancelled) {
+        if (source) URL.revokeObjectURL(source.url);
+        return;
+      }
+      forget();
+      if (meta && source) deviceRef.current = { key, savedAt: meta.savedAt, url: source.url };
+      setSaved(meta);
+      setDevice(source);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, userId, offlineVersion]);
+
+  // Let go of the stored copy's address when leaving the page.
+  useEffect(
+    () => () => {
+      if (deviceRef.current) URL.revokeObjectURL(deviceRef.current.url);
+    },
+    [],
+  );
   const {
     playOrder,
     loop: queueLoop,
@@ -302,6 +379,7 @@ export function Watch() {
       onPrevious={(playingList ? listPrevious : previousVideo) ? goPrevious : undefined}
       onNext={(playingList ? listNext : nextVideo) ? goNext : undefined}
       onTime={video.chapters.length ? setCurrentTime : undefined}
+      offline={device ?? null}
     />
   );
 
@@ -321,7 +399,9 @@ export function Watch() {
       <div className="watch-main">
         {/* This wrapper always exists: swapping it in and out would remount the
             player and restart the video. */}
-        <div className={theater ? 'theater-stage' : undefined}>{player}</div>
+        <div className={theater ? 'theater-stage' : undefined}>
+          {device === undefined ? <div className="player" aria-hidden="true" /> : player}
+        </div>
 
         <h1 className="watch-title">{video.title}</h1>
 
@@ -380,6 +460,19 @@ export function Watch() {
             <button className="btn" onClick={() => setSaveOpen(true)}>
               <IconPlaylistAdd />
               Save
+            </button>
+
+            <button
+              className={saved ? 'btn btn-on' : 'btn'}
+              onClick={() => setDownloadOpen(true)}
+              title={saved ? 'Kept on this device' : 'Download'}
+            >
+              {saved ? <IconCheck /> : <IconDownload />}
+              {downloadTask && downloadTask.phase !== 'failed'
+                ? `${downloadTask.phase === 'preparing' ? 'Preparing' : 'Downloading'} ${Math.round(downloadTask.progress * 100)}%`
+                : saved
+                  ? 'Downloaded'
+                  : 'Download'}
             </button>
 
             {youtubeUrl ? (
@@ -451,6 +544,9 @@ export function Watch() {
       </div>
 
       {saveOpen ? <SaveToPlaylist videoId={video.id} onClose={() => setSaveOpen(false)} /> : null}
+      {downloadOpen && user ? (
+        <DownloadDialog data={data} userId={user.id} saved={saved} onClose={() => setDownloadOpen(false)} />
+      ) : null}
 
       {/* Side column: playlist or queue box, then more from this channel */}
       <aside className="upnext">

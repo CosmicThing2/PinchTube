@@ -2313,6 +2313,29 @@ textarea.input {
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* The phone's combined menu: entries that open another menu, and the way back. */
+.player-menu .menu-link .menu-arrow {
+  width: 16px;
+  height: 16px;
+  fill: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+  margin-left: -4px;
+}
+
+.player-menu .menu-back {
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px 8px 0 0;
+  margin-bottom: 4px;
+}
+
+.player-menu .menu-back svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  margin-left: -4px;
+}
+
 .player-toast {
   position: absolute;
   left: 50%;
@@ -2854,6 +2877,72 @@ a.viz-row:focus-visible .viz-label {
 
 .muted {
   color: var(--text-dim);
+}
+
+/* downloads: the dialog, progress bars and the "on this device" note -------- */
+.download-saved,
+.download-task {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.download-saved > svg {
+  width: 22px;
+  height: 22px;
+  fill: var(--accent);
+  flex-shrink: 0;
+}
+
+.download-saved .grow,
+.download-task .grow,
+.download-task .download-task-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.download-saved .label,
+.download-task-text {
+  font-weight: 650;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-saved .hint,
+.download-task .hint {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.download-task.notice {
+  padding: 10px 12px;
+}
+
+.download-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.download-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.download-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 
 /* pager (previous / next page) */

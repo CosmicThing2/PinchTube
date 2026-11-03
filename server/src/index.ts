@@ -30,11 +30,13 @@ import { registerImageRoutes } from './routes/images.js';
 import { registerStreamRoutes } from './routes/stream.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerQueueRoutes } from './routes/queue.js';
+import { registerDownloadRoutes } from './routes/downloads.js';
 import { applyLibrarySettings, setLibraryLogger, shutdownLibrary, triggerScan } from './library/manager.js';
 import { needsFullRescan } from './library/scanner.js';
 import { detectHardware, hardwareStatus } from './media/hwaccel.js';
 import { setTranscodeLogger, shutdownTranscoder, startReaper } from './media/transcoder.js';
 import { checkCacheFormat } from './media/cache.js';
+import { setDownloadLogger, shutdownDownloads } from './media/downloads.js';
 
 /**
  * Applied to every response. The content security policy only lets the page
@@ -91,6 +93,10 @@ async function main(): Promise<void> {
     info: (msg) => app.log.info(msg),
     warn: (msg) => app.log.warn(msg),
     debug: (msg) => app.log.debug(msg),
+  });
+  setDownloadLogger({
+    info: (msg) => app.log.info(msg),
+    warn: (msg) => app.log.warn(msg),
   });
 
   // Signed cookies carry the login session (see auth.ts).
@@ -153,6 +159,7 @@ async function main(): Promise<void> {
   registerStreamRoutes(app);
   registerSettingsRoutes(app);
   registerQueueRoutes(app);
+  registerDownloadRoutes(app);
 
   // ---- the web app ---------------------------------------------------------
   // The built React app (web/dist, copied to ./public in the image).
@@ -238,6 +245,7 @@ async function main(): Promise<void> {
       await app.close();
       await shutdownLibrary();
       await shutdownTranscoder();
+      shutdownDownloads();
       db.close();
     } catch (err) {
       app.log.warn(`Error during shutdown: ${String(err)}`);

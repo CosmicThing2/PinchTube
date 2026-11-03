@@ -45,11 +45,13 @@ export const paths = {
   sessionKey: path.join(config.dataDir, 'session.key'),
   transcodeCache: path.join(config.cacheDir, 'transcode'),
   imageCache: path.join(config.cacheDir, 'images'),
+  /** Whole-file copies made for downloading (media/downloads.ts). */
+  downloadCache: path.join(config.cacheDir, 'downloads'),
 };
 
 /** Creates the config and cache folders on first start. */
 export function ensureDirs(): void {
-  for (const dir of [config.dataDir, config.cacheDir, paths.transcodeCache, paths.imageCache]) {
+  for (const dir of [config.dataDir, config.cacheDir, paths.transcodeCache, paths.imageCache, paths.downloadCache]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }

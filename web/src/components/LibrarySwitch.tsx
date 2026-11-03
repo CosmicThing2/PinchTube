@@ -1,33 +1,42 @@
 /*
- * LibrarySwitch.tsx — the Queue / Playlists tabs shown on a phone.
+ * LibrarySwitch.tsx — the Queue / Playlists / Downloads tabs shown on a phone.
  *
- * On a phone, Queue and Playlists share one "Library" tab in the bottom bar;
- * this switch at the top of pages/Queue.tsx and pages/Playlists.tsx moves
- * between them, and remembers which was used last so the Library tab
- * (the /library address in main.tsx) reopens it.
+ * On a phone, Queue, Playlists and Downloads share one "Library" tab in the
+ * bottom bar; this switch at the top of pages/Queue.tsx, pages/Playlists.tsx
+ * and pages/Downloads.tsx moves between them, and remembers which was used
+ * last so the Library tab (the /library address in main.tsx) reopens it.
  */
 
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
-/** Browser storage key for the last-used half. */
+/** Browser storage key for the last-used page. */
 const LAST_KEY = 'ytm-library-tab';
 
-/** Where the phone's "Library" tab should land: whichever half was used last. */
-export function lastLibraryPage(): '/queue' | '/playlists' {
+type LibraryPage = 'queue' | 'playlists' | 'downloads';
+
+const PAGES: { id: LibraryPage; label: string }[] = [
+  { id: 'queue', label: 'Queue' },
+  { id: 'playlists', label: 'Playlists' },
+  { id: 'downloads', label: 'Downloads' },
+];
+
+/** Where the phone's "Library" tab should land: whichever page was used last. */
+export function lastLibraryPage(): string {
   try {
-    return localStorage.getItem(LAST_KEY) === 'playlists' ? '/playlists' : '/queue';
+    const last = localStorage.getItem(LAST_KEY);
+    return PAGES.some((page) => page.id === last) ? `/${last}` : '/queue';
   } catch {
     return '/queue';
   }
 }
 
 /**
- * The Queue / Playlists switch at the top of both pages. Only shown on a
- * phone, where the two share one tab; the desktop sidebar lists them apart.
+ * The Queue / Playlists / Downloads switch at the top of those pages. Only
+ * shown on a phone, where they share one tab; the desktop sidebar lists them apart.
  */
-export function LibrarySwitch({ current }: { current: 'queue' | 'playlists' }) {
-  // Remember this half as the last used.
+export function LibrarySwitch({ current }: { current: LibraryPage }) {
+  // Remember this page as the last used.
   useEffect(() => {
     try {
       localStorage.setItem(LAST_KEY, current);
@@ -38,22 +47,17 @@ export function LibrarySwitch({ current }: { current: 'queue' | 'playlists' }) {
 
   return (
     <div className="library-switch" role="tablist">
-      <Link
-        to="/queue"
-        role="tab"
-        aria-selected={current === 'queue'}
-        className={current === 'queue' ? 'active' : undefined}
-      >
-        Queue
-      </Link>
-      <Link
-        to="/playlists"
-        role="tab"
-        aria-selected={current === 'playlists'}
-        className={current === 'playlists' ? 'active' : undefined}
-      >
-        Playlists
-      </Link>
+      {PAGES.map((page) => (
+        <Link
+          key={page.id}
+          to={`/${page.id}`}
+          role="tab"
+          aria-selected={current === page.id}
+          className={current === page.id ? 'active' : undefined}
+        >
+          {page.label}
+        </Link>
+      ))}
     </div>
   );
 }

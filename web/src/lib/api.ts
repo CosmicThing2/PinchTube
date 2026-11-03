@@ -302,6 +302,14 @@ export interface HomeChannelDto {
   pinned: boolean;
 }
 
+/** How a download copy is coming along on the server (server/src/media/downloads.ts). */
+export interface DownloadStatus {
+  state: 'waiting' | 'working' | 'ready' | 'failed';
+  progress: number;
+  size: number | null;
+  error: string | null;
+}
+
 /** Progress of a library scan. */
 export interface ScanStatus {
   running: boolean;

@@ -24,6 +24,7 @@ import {
   IconLogout,
   IconMenu,
   IconDataSaver,
+  IconDownload,
   IconMoon,
   IconPlaylist,
   IconQueue,
@@ -46,12 +47,13 @@ const NAV = [
   { to: '/channels', label: 'Channels', Icon: IconChannels, end: false },
   { to: '/queue', label: 'Queue', Icon: IconQueue, end: false },
   { to: '/playlists', label: 'Playlists', Icon: IconPlaylist, end: false },
+  { to: '/downloads', label: 'Downloads', Icon: IconDownload, end: false },
   { to: '/settings', label: 'Settings', Icon: IconSettings, end: false },
 ];
 
 /**
- * A phone has room for five tabs, so the queue and playlists share one
- * "Library" tab; the pages themselves carry a switch between the two.
+ * A phone has room for five tabs, so the queue, playlists and downloads share
+ * one "Library" tab; the pages themselves carry a switch between them.
  */
 const TABS = [
   { to: '/', label: 'Home', Icon: IconHome, match: (p: string) => p === '/' },
@@ -61,7 +63,8 @@ const TABS = [
     to: '/library',
     label: 'Library',
     Icon: IconLibrary,
-    match: (p: string) => p.startsWith('/queue') || p.startsWith('/playlist') || p === '/library',
+    match: (p: string) =>
+      p.startsWith('/queue') || p.startsWith('/playlist') || p.startsWith('/downloads') || p === '/library',
   },
   { to: '/settings', label: 'Settings', Icon: IconSettings, match: (p: string) => p.startsWith('/settings') },
 ];

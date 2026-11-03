@@ -8,12 +8,16 @@
  *     browser's own HLS support on Safari), with the server making segments
  *     on demand (server/src/routes/stream.ts and media/transcoder.ts)
  *   - audio only
+ *   - "This device": a copy kept in the browser (lib/offline.ts), which
+ *     always comes first when there is one, since it uses no data
  * Which one is chosen depends on the quality menu, the default quality
  * settings, data saver, and a queue's or playlist's own quality.
  *
  * Around that it provides:
  *   - controls: play/pause, previous/next, volume, time and chapter, quality,
- *     speed, subtitles, picture-in-picture, theater mode, fullscreen
+ *     speed, subtitles, picture-in-picture, theater mode, fullscreen. On a
+ *     phone the quality button moves into the gear menu, which then lists
+ *     quality, speed, subtitles and stats, so the bar fits.
  *   - a progress bar split into chapters, with SponsorBlock segments tinted,
  *     plus a skip button or automatic skipping (with Undo)
  *   - asking the server to prepare the video after a sponsor segment before
@@ -47,6 +51,8 @@ import { StatsPanel } from './StatsPanel';
 import {
   IconCaptions,
   IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
   IconForward,
   IconFullscreen,
   IconFullscreenExit,
@@ -81,8 +87,11 @@ const CUE_LINE = -3;
 const CUE_MIN_PX = 16;
 const CUE_MAX_PX = 56;
 
-/** Which pop-up menu is open, if any. */
+/** Which pop-up menu is open, if any. 'root' is the phone's combined menu. */
 type MenuTab = null | 'root' | 'quality' | 'speed' | 'captions';
+
+/** Screens this narrow get the combined menu; matches .hide-sm in styles/app.css. */
+const NARROW_QUERY = '(max-width: 639px)';
 
 /** What the watch page passes in. */
 interface Props {
@@ -103,6 +112,8 @@ interface Props {
   trackButtons?: boolean;
   /** Coarse position updates (about once a second) for things outside the player. */
   onTime?: (seconds: number) => void;
+  /** A copy kept on this device: where to play it from, and its quality's name. */
+  offline?: { url: string; label: string } | null;
 }
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
@@ -219,6 +230,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     onNext,
     trackButtons = false,
     onTime: onTimeProp,
+    offline = null,
   },
   ref,
 ) {
@@ -236,9 +248,11 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   const flashTimer = useRef(0);
   const lastTapRef = useRef<{ time: number; side: 'left' | 'right' | null }>({ time: 0, side: null });
 
+  // A copy on this device beats every other choice: it costs no data at all.
+  const hasOffline = offline !== null;
   const preferred = useMemo(
-    () => preferredFor(playback, dataSaver, forcedQuality),
-    [playback, dataSaver, forcedQuality],
+    () => (hasOffline ? 'device' : preferredFor(playback, dataSaver, forcedQuality)),
+    [hasOffline, playback, dataSaver, forcedQuality],
   );
   const [quality, setQuality] = useState<string>(preferred);
   const appliedPreferred = useRef(preferred);
@@ -256,6 +270,9 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   const [speed, setSpeed] = useState(1);
   const [captions, setCaptions] = useState<number>(playback.subtitlesDefault && video.subtitles.length ? 0 : -1);
   const [menu, setMenu] = useState<MenuTab>(null);
+  /** Whether the open menu was reached from the combined menu, so it offers "back". */
+  const [fromRoot, setFromRoot] = useState(false);
+  const [narrow, setNarrow] = useState(() => window.matchMedia?.(NARROW_QUERY).matches ?? false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
@@ -283,16 +300,30 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
 
   const useHlsJs = useMemo(() => Hls.isSupported(), []);
   const isOriginal = quality === 'original' && playback.original.available;
+  const isDevice = quality === 'device' && offline !== null;
+  /** Playing a whole file (from the server or this device) rather than HLS. */
+  const isDirect = isOriginal || isDevice;
   const isAudio = quality === 'audio';
 
   // Reloading the media element is only needed when the *kind* of source changes.
-  const sourceKey = isOriginal
-    ? 'original'
-    : isAudio
-      ? 'audio'
-      : useHlsJs
-        ? 'hls'
-        : `native:${quality}`;
+  const sourceKey = isDevice
+    ? 'device'
+    : isOriginal
+      ? 'original'
+      : isAudio
+        ? 'audio'
+        : useHlsJs
+          ? 'hls'
+          : `native:${quality}`;
+
+  // Follows the screen width, which a phone turned sideways can cross.
+  useEffect(() => {
+    const query = window.matchMedia?.(NARROW_QUERY);
+    if (!query) return;
+    const onChange = () => setNarrow(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
 
   /** A short message over the picture, e.g. after switching quality automatically. */
   const showToast = useCallback((message: string) => {
@@ -369,7 +400,10 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
 
     element.addEventListener('loadedmetadata', applyResume, { once: true });
 
-    if (isOriginal) {
+    if (isDevice && offline) {
+      element.src = offline.url;
+      element.load();
+    } else if (isOriginal) {
       element.src = urls.original(video.id);
       element.load();
     } else if (isAudio && !useHlsJs) {
@@ -507,10 +541,10 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     };
     const onError = () => {
       // A codec the browser cannot decode: drop to the transcoded ladder.
-      if (isOriginal) {
+      if (isDirect) {
         resumeRef.current = element.currentTime || resumeRef.current;
         setQuality('auto');
-        showToast('This file needs transcoding — switched to Auto');
+        showToast(isDevice ? 'The copy on this device would not play — switched to Auto' : 'This file needs transcoding — switched to Auto');
       } else {
         setError('Playback failed. Check the server logs for ffmpeg errors.');
       }
@@ -541,7 +575,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       element.removeEventListener('error', onError);
       element.removeEventListener('ended', onEnded);
     };
-  }, [dragging, isOriginal, onEnded, showToast, onTimeProp]);
+  }, [dragging, isDirect, isDevice, onEnded, showToast, onTimeProp]);
 
   // ------------------------------------------------------------ progress ----
   // Saves the position every few seconds while playing, and when leaving the page.
@@ -976,7 +1010,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   // asked to prepare the first few seconds after it. Direct play needs none.
   const warmedRef = useRef(new Set<string>());
   const skipping = autoSkip || playback.sponsorSkipPrompt !== false;
-  const warmTarget = !skipping || isOriginal
+  const warmTarget = !skipping || isDirect
     ? null
     : currentChapter?.kind === 'sponsor'
       ? currentChapter
@@ -1001,6 +1035,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   /** The transcoded quality being played, as the server names it, or null when unknown. */
   function playingRendition(): string | null {
     if (isAudio) return 'audio';
+    if (isDirect) return null;
     const hls = hlsRef.current;
     if (hls) {
       const level = hls.levels[hls.currentLevel >= 0 ? hls.currentLevel : hls.loadLevel];
@@ -1203,9 +1238,11 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         : 'Auto'
       : quality === 'original'
         ? 'Original'
-        : quality === 'audio'
-          ? 'Audio'
-          : quality;
+        : quality === 'device'
+          ? 'This device'
+          : quality === 'audio'
+            ? 'Audio'
+            : quality;
 
   const playedPercent = duration ? (current / duration) * 100 : 0;
   const bufferedEnd = buffered;
@@ -1335,10 +1372,10 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
           hlsRef={hlsRef}
           videoId={video.id}
           label={qualityLabel}
-          direct={isOriginal}
+          direct={isDirect}
           rendition={playingRendition}
-          fileBitrate={video.size && video.duration ? (video.size * 8) / video.duration : null}
-          codec={isOriginal ? video.vcodec : isAudio ? null : 'h264'}
+          fileBitrate={isOriginal && video.size && video.duration ? (video.size * 8) / video.duration : null}
+          codec={isOriginal ? video.vcodec : isAudio || isDevice ? null : 'h264'}
           onClose={() => setStatsOpen(false)}
         />
       ) : null}
@@ -1483,7 +1520,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
             {video.subtitles.length ? (
               <button
                 className="pbtn"
-                onClick={() => setMenu(menu === 'captions' ? null : 'captions')}
+                onClick={() => openMenu('captions')}
                 aria-label="Subtitles"
                 style={captions >= 0 ? { color: 'var(--accent)' } : undefined}
               >
@@ -1491,13 +1528,14 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
               </button>
             ) : null}
 
-            <button className="pbtn text" onClick={() => setMenu(menu === 'quality' ? null : 'quality')}>
+            {/* On a phone this lives in the gear's combined menu instead */}
+            <button className="pbtn text hide-sm" onClick={() => openMenu('quality')}>
               {qualityLabel}
             </button>
 
             <button
               className="pbtn"
-              onClick={() => setMenu(menu === 'speed' ? null : 'speed')}
+              onClick={() => openMenu(narrow ? 'root' : 'speed')}
               aria-label="Playback settings"
             >
               <IconGearSmall />
@@ -1536,10 +1574,44 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         </div>
       </div>
 
-      {/* ---- menus: quality, speed (and Stats for nerds), subtitles ---- */}
+      {/* ---- menus: the phone's combined menu, quality, speed (and Stats for nerds), subtitles ---- */}
+      {menu === 'root' ? (
+        <div className="player-menu">
+          <MenuLink label="Quality" value={qualityLabel} onClick={() => openSubmenu('quality')} />
+          <MenuLink
+            label="Playback speed"
+            value={speed === 1 ? 'Normal' : `${speed}×`}
+            onClick={() => openSubmenu('speed')}
+          />
+          {video.subtitles.length ? (
+            <MenuLink
+              label="Subtitles"
+              value={video.subtitles.find((track) => track.index === captions)?.label ?? 'Off'}
+              onClick={() => openSubmenu('captions')}
+            />
+          ) : null}
+          <MenuItem
+            label="Stats for nerds"
+            selected={statsOpen}
+            onClick={() => {
+              setStatsOpen((open) => !open);
+              setMenu(null);
+            }}
+          />
+        </div>
+      ) : null}
+
       {menu === 'quality' ? (
         <div className="player-menu">
-          <div className="menu-head">Quality</div>
+          <MenuHead title="Quality" onBack={fromRoot ? () => setMenu('root') : undefined} />
+          {offline ? (
+            <MenuItem
+              label="This device"
+              hint={offline.label}
+              selected={quality === 'device'}
+              onClick={() => switchQuality('device')}
+            />
+          ) : null}
           <MenuItem
             label="Auto"
             hint={autoLevelLabel}
@@ -1577,7 +1649,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
 
       {menu === 'speed' ? (
         <div className="player-menu">
-          <div className="menu-head">Playback speed</div>
+          <MenuHead title="Playback speed" onBack={fromRoot ? () => setMenu('root') : undefined} />
           {SPEEDS.map((value) => (
             <MenuItem
               key={value}
@@ -1591,21 +1663,26 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
               }}
             />
           ))}
-          <div className="menu-head">Diagnostics</div>
-          <MenuItem
-            label="Stats for nerds"
-            selected={statsOpen}
-            onClick={() => {
-              setStatsOpen((open) => !open);
-              setMenu(null);
-            }}
-          />
+          {/* Reached from the combined menu, Stats for nerds is listed there already */}
+          {fromRoot ? null : (
+            <>
+              <div className="menu-head">Diagnostics</div>
+              <MenuItem
+                label="Stats for nerds"
+                selected={statsOpen}
+                onClick={() => {
+                  setStatsOpen((open) => !open);
+                  setMenu(null);
+                }}
+              />
+            </>
+          )}
         </div>
       ) : null}
 
       {menu === 'captions' ? (
         <div className="player-menu">
-          <div className="menu-head">Subtitles</div>
+          <MenuHead title="Subtitles" onBack={fromRoot ? () => setMenu('root') : undefined} />
           <MenuItem
             label="Off"
             selected={captions < 0}
@@ -1630,6 +1707,18 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     </div>
   );
 
+  /** Opens a menu from its button, or closes it if it is already open. */
+  function openMenu(tab: Exclude<MenuTab, null>) {
+    setFromRoot(false);
+    setMenu(menu === tab ? null : tab);
+  }
+
+  /** Opens one of the combined menu's entries, with a way back to it. */
+  function openSubmenu(tab: Exclude<MenuTab, null>) {
+    setFromRoot(true);
+    setMenu(tab);
+  }
+
   /** Changes quality, carrying on from the same point (and playing if it was). */
   function switchQuality(next: string) {
     const element = videoRef.current;
@@ -1642,6 +1731,29 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
     }
   }
 });
+
+/** A menu's heading; with `onBack`, it is a button back to the combined menu. */
+function MenuHead({ title, onBack }: { title: string; onBack?: () => void }) {
+  if (!onBack) return <div className="menu-head">{title}</div>;
+  return (
+    <button type="button" className="menu-back" onClick={onBack}>
+      <IconChevronLeft />
+      <span>{title}</span>
+    </button>
+  );
+}
+
+/** An entry in the combined menu that opens another: its name, current value and an arrow. */
+function MenuLink({ label, value, onClick }: { label: string; value: string; onClick: () => void }) {
+  return (
+    <button type="button" className="menu-link" onClick={onClick}>
+      <span className="tick" />
+      <span>{label}</span>
+      <span className="sub">{value}</span>
+      <IconChevronRight className="menu-arrow" />
+    </button>
+  );
+}
 
 /** One choice in a player menu, ticked when selected. */
 function MenuItem({
