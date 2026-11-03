@@ -1,3 +1,12 @@
+/*
+ * poster.ts — makes a thumbnail for a video that came without one.
+ *
+ * Takes a single frame from about a quarter of the way into the video with
+ * ffmpeg and saves it in the image cache, so it is only ever made once per
+ * version of the file. routes/images.ts uses it when a video has no
+ * thumbnail file of its own; images.ts then resizes it like any other artwork.
+ */
+
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -7,6 +16,7 @@ import { config, paths } from '../config.js';
 /** One ffmpeg run per video, ever — the frame is cached alongside the thumbnails. */
 const inflight = new Map<string, Promise<string | null>>();
 
+/** Runs ffmpeg, giving up after 45 seconds. */
 function run(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(config.ffmpeg, args, { timeout: 45_000 }, (err) => (err ? reject(err) : resolve()));
@@ -24,8 +34,10 @@ export async function posterForVideo(
   duration: number | null,
   mtime: number | null,
 ): Promise<string | null> {
+  // The file's modification time is in the name, so a replaced video gets a new frame.
   const target = path.join(paths.imageCache, `frame-${videoId}-${mtime ?? 0}.jpg`);
 
+  // Already made?
   try {
     await fsp.access(target, fs.constants.R_OK);
     return target;
@@ -33,6 +45,7 @@ export async function posterForVideo(
     /* needs generating */
   }
 
+  // Being made right now for another request? Share that result.
   const pending = inflight.get(target);
   if (pending) return pending;
 
@@ -42,6 +55,7 @@ export async function posterForVideo(
       duration && duration > 40 ? Math.min(duration * 0.25, 300) : Math.max(1, (duration ?? 12) / 3);
     const tmp = `${target}.${process.pid}.tmp.jpg`;
 
+    // Written to a temporary name and renamed, so a half-written file is never served.
     try {
       await run([
         '-hide_banner',

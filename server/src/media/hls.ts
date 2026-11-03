@@ -1,10 +1,25 @@
+/*
+ * hls.ts — writes the HLS playlists the player reads.
+ *
+ * HLS (HTTP Live Streaming) plays a video as a series of short segments
+ * listed in text playlists:
+ *   - the master playlist lists each quality (rendition) on offer, with its
+ *     bitrate and picture size, so the player can choose or switch between them
+ *   - each quality's own playlist lists every segment of the video in order
+ * Both are worked out from the video's duration and size alone, so they can
+ * be sent instantly. The segments they name are only made when the player
+ * asks for them (see transcoder.ts). routes/stream.ts serves these.
+ */
+
 import type { Rendition } from './renditions.js';
 import { outputSize } from './renditions.js';
 
+/** How many segments a video of this length is cut into. */
 export function segmentCountFor(duration: number, segmentSeconds: number): number {
   return Math.max(1, Math.ceil(duration / segmentSeconds));
 }
 
+/** The codec description the player uses to check it can play a quality. */
 function codecString(size: number): string {
   // High profile; level 4.0 for 1080p and up, 3.1 below that.
   return size >= 1080 ? 'avc1.640028,mp4a.40.2' : 'avc1.64001f,mp4a.40.2';
@@ -15,6 +30,7 @@ export interface MasterVideo {
   height: number | null;
 }
 
+/** The master playlist: one entry per quality, pointing at that quality's own playlist. */
 export function masterPlaylist(video: MasterVideo, renditions: Rendition[]): string {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:6', '#EXT-X-INDEPENDENT-SEGMENTS', ''];
 

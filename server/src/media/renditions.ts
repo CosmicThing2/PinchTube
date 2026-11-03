@@ -1,3 +1,17 @@
+/*
+ * renditions.ts — the list of qualities a video can be converted to.
+ *
+ * Defines the quality "ladder" (2160p down to 360p, plus audio only) with
+ * the bitrate each is encoded at, picks which of them make sense for a given
+ * video (never larger than the source, never above the user's maximum
+ * quality setting), and works out the exact picture size of each, keeping
+ * the aspect ratio. Qualities are named by the shorter side, as YouTube does.
+ *
+ * Used by transcoder.ts (what to encode), hls.ts (what to list in the
+ * master playlist) and routes/library.ts (what the quality menu offers).
+ */
+
+/** One quality the server can convert a video to. */
 export interface Rendition {
   id: string;
   label: string;
@@ -39,12 +53,15 @@ export const AUDIO_RENDITION: Rendition = {
   audioBitrate: 96,
 };
 
+/** Whether this is the audio-only choice. */
 export function isAudioOnly(rendition: Rendition): boolean {
   return rendition.id === AUDIO_RENDITION.id;
 }
 
+/** Every quality name a setting may hold. */
 export const QUALITY_CHOICES = ['original', ...LADDER.map((r) => r.id), AUDIO_RENDITION.id];
 
+/** A quality by its id ("1080p", "audio"), or undefined for anything else. */
 export function findRendition(id: string): Rendition | undefined {
   if (id === AUDIO_RENDITION.id) return AUDIO_RENDITION;
   return LADDER.find((r) => r.id === id);

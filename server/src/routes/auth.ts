@@ -1,3 +1,23 @@
+/*
+ * routes/auth.ts — the API for signing in and out, first-run setup, your own
+ * password, and two-factor sign-in.
+ *
+ *   GET  /api/auth/status          am I signed in? is first-run setup needed?
+ *   POST /api/auth/setup           create the first admin (needs the setup code)
+ *   POST /api/auth/login           username + password; may ask for a 2FA code next
+ *   POST /api/auth/login/2fa       the 2FA (or recovery) code, completing sign-in
+ *   POST /api/auth/logout          sign this device out
+ *   POST /api/auth/password        change your own password
+ *   GET  /api/auth/2fa             is 2FA on, and how many recovery codes are left
+ *   POST /api/auth/2fa/setup       start turning 2FA on: a new secret and QR code
+ *   POST /api/auth/2fa/enable      confirm with a code from the app; returns recovery codes
+ *   POST /api/auth/2fa/disable     turn it off (needs the password)
+ *   POST /api/auth/2fa/recovery    new recovery codes (needs the password)
+ * Every guess is throttled per address and per account. The building blocks
+ * are in auth.ts and totp.ts; the web side is pages/AuthPage.tsx and
+ * components/TwoFactorPanel.tsx.
+ */
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import QRCode from 'qrcode';
 import { db } from '../db.js';
@@ -30,10 +50,13 @@ import {
   verifyTotp,
 } from '../totp.js';
 
+// ---- rules and helpers ------------------------------------------------------
+
 export const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 256;
 const ISSUER = 'PinchTube';
 
+/** What is wrong with a username, or null if it is fine. Also used by routes/users.ts. */
 export function usernameProblem(username: unknown): string | null {
   if (typeof username !== 'string' || username.trim().length < 3) {
     return 'Username must be at least 3 characters';
@@ -45,6 +68,7 @@ export function usernameProblem(username: unknown): string | null {
   return null;
 }
 
+/** What is wrong with a new password, or null if it is fine. */
 export function passwordProblem(password: unknown): string | null {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
     return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
@@ -54,6 +78,7 @@ export function passwordProblem(password: unknown): string | null {
   return null;
 }
 
+/** The parts of an account the web app is told about. */
 export function publicUser(user: User) {
   return {
     id: user.id,
@@ -63,6 +88,7 @@ export function publicUser(user: User) {
   };
 }
 
+/** Starts a session and sets its cookie. */
 function signIn(request: FastifyRequest, reply: FastifyReply, userId: number): void {
   const token = createSession(userId, request.headers['user-agent']);
   setSessionCookie(request, reply, token);
@@ -91,6 +117,7 @@ function confirmPassword(
   return null;
 }
 
+/** The reply while a lockout is in force. */
 function tooMany(reply: FastifyReply, seconds: number) {
   return reply
     .code(429)
@@ -128,13 +155,17 @@ function checkSecondFactor(userId: number, code: string): boolean {
   return false;
 }
 
+// ---- routes -------------------------------------------------------------------
+
 export function registerAuthRoutes(app: FastifyInstance): void {
+  // Asked first by the web app to decide between the app, sign-in and setup screens.
   app.get('/api/auth/status', { config: { public: true } }, async (request) => ({
     setupRequired: setupRequired(),
     authenticated: Boolean(request.user),
     user: request.user ? publicUser(request.user) : null,
   }));
 
+  // First run only: create the administrator, proving access to the server log with the setup code.
   app.post('/api/auth/setup', { config: { public: true } }, async (request, reply) => {
     if (!setupRequired()) {
       return reply.code(409).send({ error: 'An account already exists' });
@@ -159,6 +190,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return { user: publicUser(user) };
   });
 
+  // Sign in with username and password.
   app.post('/api/auth/login', { config: { public: true } }, async (request, reply) => {
     const body = (request.body ?? {}) as any;
     const username = typeof body.username === 'string' ? body.username.trim().slice(0, 64) : '';
@@ -169,6 +201,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     const blockedFor = Math.max(ipThrottle.blockedFor(ipKey), userKey ? userThrottle.blockedFor(userKey) : 0);
     if (blockedFor > 0) return tooMany(reply, blockedFor);
 
+    // An unknown username still costs a full password check, so timing gives nothing away.
     const row = username ? findUserRow(username) : undefined;
     let ok = false;
     if (row) ok = verifyPassword(password, row.password_hash);
@@ -191,6 +224,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return { user: { username: row.username } };
   });
 
+  // Second step of sign-in: the ticket from the password step plus a code.
   app.post('/api/auth/login/2fa', { config: { public: true } }, async (request, reply) => {
     const body = (request.body ?? {}) as any;
     const ipKey = request.ip || 'unknown';
@@ -219,6 +253,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return { user: { username: row.username } };
   });
 
+  // Sign out this device.
   app.post('/api/auth/logout', { config: { public: true } }, async (request, reply) => {
     const token = readSessionToken(request);
     if (token) destroySession(token);
@@ -226,6 +261,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  // Change your own password (needs the current one).
   app.post('/api/auth/password', async (request, reply) => {
     const user = request.user!;
     const body = (request.body ?? {}) as any;
@@ -263,6 +299,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return { secret, url, qr };
   });
 
+  // Finishes enrolment once the app shows the right code; returns the recovery codes, shown once.
   app.post('/api/auth/2fa/enable', async (request, reply) => {
     const user = request.user!;
     const body = (request.body ?? {}) as any;
@@ -297,6 +334,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  // A fresh set of recovery codes, replacing the old ones.
   app.post('/api/auth/2fa/recovery', async (request, reply) => {
     const user = request.user!;
     const body = (request.body ?? {}) as any;
@@ -312,6 +350,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return { recoveryCodes: codes };
   });
 
+  // Whether 2FA is on, for the account section of Settings.
   app.get('/api/auth/2fa', async (request) => {
     const row = getUserRow(request.user!.id)!;
     let remaining = 0;

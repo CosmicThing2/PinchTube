@@ -1,3 +1,14 @@
+/*
+ * totp.ts — two-factor sign-in codes (the six-digit codes from an
+ * authenticator app) and recovery codes.
+ *
+ * Self-contained maths with no database access: making a secret, turning it
+ * into the QR-code link an app scans, checking a typed code, and making and
+ * hashing single-use recovery codes. routes/auth.ts uses these for turning
+ * two-factor on and off and for the code step of signing in; auth.ts stores
+ * the secret and the last accepted code on the account.
+ */
+
 import crypto from 'node:crypto';
 
 /**
@@ -11,8 +22,11 @@ const DIGITS = 6;
 /** Codes from one step either side are accepted, for clocks that drift a little. */
 const WINDOW = 1;
 
+// ---- base32, the text form authenticator apps use for the secret -----------
+
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
+/** Bytes to base32 text, five bits per letter. */
 export function base32Encode(buffer: Buffer): string {
   let bits = 0;
   let value = 0;
@@ -29,6 +43,7 @@ export function base32Encode(buffer: Buffer): string {
   return out;
 }
 
+/** Base32 text back to bytes, ignoring spaces and anything else that is not base32. */
 export function base32Decode(input: string): Buffer {
   const clean = input.toUpperCase().replace(/[^A-Z2-7]/g, '');
   let bits = 0;
@@ -45,11 +60,14 @@ export function base32Decode(input: string): Buffer {
   return Buffer.from(out);
 }
 
+// ---- codes ------------------------------------------------------------------
+
 /** 160 random bits, the length RFC 4226 recommends for SHA-1. */
 export function generateSecret(): string {
   return base32Encode(crypto.randomBytes(20));
 }
 
+/** The six-digit code for one 30-second step (the HOTP algorithm of RFC 4226). */
 function codeAt(secret: Buffer, step: number): string {
   const counter = Buffer.alloc(8);
   counter.writeBigUInt64BE(BigInt(step));
@@ -63,6 +81,7 @@ function codeAt(secret: Buffer, step: number): string {
   return String(binary % 10 ** DIGITS).padStart(DIGITS, '0');
 }
 
+/** Which 30-second step a moment falls in. */
 export function currentStep(now = Date.now()): number {
   return Math.floor(now / 1000 / STEP_SECONDS);
 }
@@ -101,6 +120,7 @@ export function otpauthUrl(secretB32: string, account: string, issuer: string): 
 
 // ---- recovery codes ---------------------------------------------------------
 
+/** Recovery codes are stored hashed, ignoring case and dashes. */
 export function hashRecoveryCode(code: string): string {
   const normalised = code.toLowerCase().replace(/[^0-9a-z]/g, '');
   return crypto.createHash('sha256').update(normalised).digest('hex');

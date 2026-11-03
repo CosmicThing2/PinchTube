@@ -1,3 +1,26 @@
+/*
+ * scanner.ts — walks the media folder and keeps the library tables up to date.
+ *
+ * The media folder is expected to look the way Pinchflat lays it out: one
+ * folder per channel (with a tvshow.nfo and artwork), and inside it video
+ * files, each with an .nfo, a thumbnail and maybe subtitles sharing its name,
+ * possibly in season sub-folders.
+ *
+ * A scan:
+ *   1. lists the channel folders and records each channel (name and
+ *      description from tvshow.nfo via nfo.ts, plus poster/banner/fanart)
+ *   2. walks each channel's folders, grouping files by name into videos,
+ *      reading .nfo metadata, running ffprobe (ffprobe.ts) on new or changed
+ *      files, and working out chapters (chapters.ts)
+ *   3. deletes every channel and video that was not seen this time, because
+ *      it no longer exists on disk
+ * To stay fast on big libraries, a folder whose modification time has not
+ * changed since last time is skipped (its videos are just marked as seen),
+ * unless a "full" scan was asked for.
+ *
+ * manager.ts decides when scans run; lib/videos.ts reads what they store.
+ */
+
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +31,7 @@ import { readChannelNfo, readVideoNfo } from './nfo.js';
 import { probe } from './ffprobe.js';
 import { chaptersFromDescription, chaptersFromProbe, isYoutubeId, youtubeIdFromName } from './chapters.js';
 
+// What counts as a video, a subtitle or artwork; how deep to look; how many ffprobes at once.
 const VIDEO_EXT = new Set(['.mp4', '.mkv', '.webm', '.m4v', '.mov', '.avi', '.ts', '.flv']);
 const SUBTITLE_EXT = new Set(['.srt', '.vtt']);
 const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -25,6 +49,7 @@ const SCAN_LOGIC_VERSION = 4;
 /** Half-written downloads, which are unplayable and must never enter the library. */
 const PARTIAL_MARKERS = ['.temp', '.part', '.tmp', '.download', '.crdownload', '.ytdl'];
 
+/** Whether a filename looks like a download still in progress. */
 function isPartialDownload(name: string): boolean {
   const lower = name.toLowerCase();
   // "video.mp4.part"
@@ -35,6 +60,7 @@ function isPartialDownload(name: string): boolean {
   return PARTIAL_MARKERS.some((marker) => stem.endsWith(marker));
 }
 
+/** Progress of the current or last scan, shown under Settings → Library. */
 export interface ScanState {
   running: boolean;
   full: boolean;
@@ -63,10 +89,15 @@ export const scanState: ScanState = {
   error: null,
 };
 
+/**
+ * A stable id from a channel folder name or a video's path within the media
+ * folder, so the same file keeps the same id (and its watch history) across scans.
+ */
 export function idFor(kind: string, key: string): string {
   return crypto.createHash('sha1').update(kind + ':' + key).digest('hex').slice(0, 20);
 }
 
+/** Forward slashes, so ids are the same whatever the operating system. */
 function toPosix(p: string): string {
   return p.split(path.sep).join('/');
 }
@@ -84,6 +115,7 @@ function prettifyName(base: string): string {
     .trim();
 }
 
+/** True when the stored rules version differs, so index.ts asks for one full rescan. */
 export function needsFullRescan(): boolean {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('scan_logic_version') as
     | { value: string }
@@ -91,12 +123,14 @@ export function needsFullRescan(): boolean {
   return !row || Number(row.value) !== SCAN_LOGIC_VERSION;
 }
 
+/** Records that a full scan has been done with the current rules. */
 function markScanLogicVersion(): void {
   db.prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
   ).run('scan_logic_version', String(SCAN_LOGIC_VERSION));
 }
 
+/** The first of e.g. poster.jpg / poster.png / folder.jpg that exists in a folder. */
 async function findImage(dir: string, names: string[]): Promise<string | null> {
   for (const name of names) {
     for (const ext of IMAGE_EXT) {
@@ -114,6 +148,7 @@ async function findImage(dir: string, names: string[]): Promise<string | null> {
   return null;
 }
 
+/** Runs `worker` over the items with at most `limit` running at once. */
 async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
   let index = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -129,6 +164,7 @@ async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<v
   await Promise.all(runners);
 }
 
+/** The files that belong to one video: they share its name. */
 interface Grouped {
   video?: string;
   nfo?: string;
@@ -136,6 +172,9 @@ interface Grouped {
   subtitles: { file: string; lang: string; ext: string }[];
 }
 
+// ---- prepared database statements -------------------------------------------
+
+/** Adds a channel or updates the one with the same id. */
 const upsertChannel = db.prepare(`
   INSERT INTO channels (id, folder, path, title, plot, poster, banner, fanart, nfo_mtime, last_seen)
   VALUES (@id, @folder, @path, @title, @plot, @poster, @banner, @fanart, @nfo_mtime, @last_seen)
@@ -153,6 +192,10 @@ const upsertChannel = db.prepare(`
 
 const selectVideo = db.prepare('SELECT id, mtime, size, duration, chapters FROM videos WHERE id = ?');
 
+/**
+ * Adds a video or updates it. COALESCE keeps the stored technical details
+ * when this pass did not run ffprobe (and so passes null for them).
+ */
 const insertVideo = db.prepare(`
   INSERT INTO videos (
     id, channel_id, path, dir, rel_path, season, title, plot, aired,
@@ -189,12 +232,15 @@ const insertVideo = db.prepare(`
     last_seen  = excluded.last_seen
 `);
 
+// The fast path: remembering each folder's modification time between scans.
 const touchVideosInDir = db.prepare('UPDATE videos SET last_seen = ? WHERE dir = ?');
 const upsertScanDir = db.prepare(`
   INSERT INTO scan_dirs (path, mtime, last_seen) VALUES (?, ?, ?)
   ON CONFLICT(path) DO UPDATE SET mtime = excluded.mtime, last_seen = excluded.last_seen
 `);
 const selectScanDir = db.prepare('SELECT mtime FROM scan_dirs WHERE path = ?');
+
+// ---- the scan ---------------------------------------------------------------
 
 /** Runs a library scan. `full` re-reads every file instead of trusting directory mtimes. */
 export async function runScan(options: { full?: boolean } = {}): Promise<ScanState> {
@@ -205,6 +251,7 @@ export async function runScan(options: { full?: boolean } = {}): Promise<ScanSta
   const root = settings.library.mediaPath;
   const startedAt = Date.now();
 
+  // Reset the progress counters shown in Settings.
   Object.assign(scanState, {
     running: true,
     full,
@@ -225,6 +272,7 @@ export async function runScan(options: { full?: boolean } = {}): Promise<ScanSta
       throw new Error('Media folder "' + root + '" does not exist or is not a directory');
     }
 
+    // Every visible top-level folder is a channel.
     scanState.phase = 'reading channels';
     const entries = await fsp.readdir(root, { withFileTypes: true });
     const channelDirs = entries
@@ -273,6 +321,7 @@ export async function runScan(options: { full?: boolean } = {}): Promise<ScanSta
   return scanState;
 }
 
+/** Records one channel folder, then scans the videos inside it. */
 async function scanChannel(root: string, folder: string, startedAt: number, full: boolean): Promise<void> {
   const channelPath = path.join(root, folder);
   const channelId = idFor('channel', folder);
@@ -288,6 +337,7 @@ async function scanChannel(root: string, folder: string, startedAt: number, full
     /* channel has no tvshow.nfo — fall back to the folder name */
   }
 
+  // Channel artwork, under the names Kodi/Jellyfin use.
   const [poster, banner, fanart] = await Promise.all([
     findImage(channelPath, ['poster', 'folder', 'cover']),
     findImage(channelPath, ['banner']),
@@ -310,6 +360,10 @@ async function scanChannel(root: string, folder: string, startedAt: number, full
   await scanDirectory(root, channelPath, channelId, startedAt, full, 0);
 }
 
+/**
+ * Scans one folder and its sub-folders. A folder holding videos is only read
+ * in full when it changed since last time (or on a full scan).
+ */
 async function scanDirectory(
   root: string,
   dir: string,
@@ -355,11 +409,13 @@ async function scanDirectory(
     }
   }
 
+  // Then each sub-folder, e.g. one per season.
   for (const sub of subdirs) {
     await scanDirectory(root, path.join(dir, sub.name), channelId, startedAt, full, depth + 1);
   }
 }
 
+/** Reads every video in one folder, along with its .nfo, thumbnail and subtitles. */
 async function scanVideoDirectory(
   root: string,
   dir: string,
@@ -378,6 +434,7 @@ async function scanVideoDirectory(
     return g;
   };
 
+  // Sort the folder's files into groups, one per video, by shared file name.
   for (const entry of files) {
     const name = entry.name;
     if (isPartialDownload(name)) continue;
@@ -406,12 +463,14 @@ async function scanVideoDirectory(
     }
   }
 
+  // Only groups that actually contain a video become library entries.
   const season = path.basename(dir);
   const pending: { base: string; group: Grouped }[] = [];
   groups.forEach((group, base) => {
     if (group.video) pending.push({ base, group });
   });
 
+  // Then record each video, a few at a time.
   await pool(pending, PROBE_CONCURRENCY, async ({ base, group }) => {
     const file = group.video as string;
     let st: fs.Stats;
@@ -447,6 +506,7 @@ async function scanVideoDirectory(
       chapters = JSON.stringify(embedded.length ? embedded : chaptersFromDescription(plot, duration));
     }
 
+    // The YouTube id (used for links back to YouTube) from the .nfo, else the filename.
     const nfoId = nfo ? nfo.youtubeId : null;
     const youtubeId = isYoutubeId(nfoId) ? nfoId : youtubeIdFromName(base);
 

@@ -1,5 +1,25 @@
+/*
+ * settings.ts — every setting changed from the web app's Settings page.
+ *
+ * Settings are split into sections. Two are global and only an admin may
+ * change them (library: the media folder and scanning; transcode: graphics
+ * card, cache size and so on). The rest are personal, so every user keeps
+ * their own copy (appearance, home page rows, playback, browsing).
+ *
+ * Global sections are stored as one JSON value in the settings table;
+ * personal ones as JSON on the user's own row. This file defines all of them
+ * with their defaults, merges what is stored over those defaults, and
+ * clamps every value to a safe range, so a bad or hostile value can never
+ * reach the code that uses it. Results are cached in memory.
+ *
+ * routes/settings.ts is the API for reading and saving them. Most of the
+ * server reads them through getSettings() (global) or settingsFor(user).
+ */
+
 import { db } from './db.js';
 import { config } from './config.js';
+
+// ---- types and fixed lists --------------------------------------------------
 
 export type HomeRowId = 'continue' | 'recent' | 'random' | 'channels';
 
@@ -14,6 +34,7 @@ const LEGACY_CARD_SIZES: Record<string, CardSize> = {
   large: 'lg',
 };
 
+/** One of the built-in rows on the home page. */
 export interface HomeRow {
   id: HomeRowId;
   enabled: boolean;
@@ -47,6 +68,7 @@ export const GLOBAL_SECTIONS = ['library', 'transcode'] as const;
 /** Sections every user keeps their own copy of. */
 export const PERSONAL_SECTIONS = ['appearance', 'home', 'playback', 'ui'] as const;
 
+/** Every setting, by section. */
 export interface AppSettings {
   library: {
     mediaPath: string;
@@ -133,6 +155,9 @@ export interface AppSettings {
   };
 }
 
+// ---- defaults ---------------------------------------------------------------
+
+/** What every setting starts as; also the shape a stored value must match. */
 export const defaultSettings: AppSettings = {
   library: {
     mediaPath: config.defaultMediaDir,
@@ -194,6 +219,8 @@ export const defaultSettings: AppSettings = {
   },
 };
 
+// ---- merging stored values over the defaults --------------------------------
+
 function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -220,6 +247,7 @@ function mergeKnown<T>(base: T, patch: unknown): T {
   return out as T;
 }
 
+/** Parses stored JSON, treating anything unreadable as "nothing saved". */
 function parseJson(raw: string | null | undefined): unknown {
   if (!raw) return {};
   try {
@@ -229,6 +257,7 @@ function parseJson(raw: string | null | undefined): unknown {
   }
 }
 
+/** Just the named sections of a settings object. */
 function pick(source: any, sections: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!isPlainObject(source)) return out;
@@ -236,6 +265,9 @@ function pick(source: any, sections: readonly string[]): Record<string, unknown>
   return out;
 }
 
+// ---- reading and saving -----------------------------------------------------
+
+// Settings are read on almost every request, so they are cached until changed.
 let globalCache: AppSettings | null = null;
 const userCache = new Map<number, AppSettings>();
 
@@ -300,9 +332,12 @@ export function visibleSettings(settings: AppSettings, admin: boolean): Partial<
   return admin ? settings : (pick(settings, PERSONAL_SECTIONS) as Partial<AppSettings>);
 }
 
+/** Drops a user's cached settings, e.g. when the account is deleted. */
 export function forgetUserSettings(userId: number): void {
   userCache.delete(userId);
 }
+
+// ---- cleaning up values -----------------------------------------------------
 
 /** Rows arrive from the client as a re-ordered list; keep only known ids, keep order. */
 function normaliseRows(rows: unknown): HomeRow[] {
@@ -349,17 +384,20 @@ function normaliseChannelRows(rows: unknown): ChannelRow[] {
   return out;
 }
 
+/** A whole number within min..max, or the fallback if it is not a number at all. */
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const n = typeof value === 'number' ? value : parseInt(String(value), 10);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
+/** A colour must be a preset name or a #rrggbb value; anything else gets the fallback. */
 function colourSetting(value: unknown, fallback: string): string {
   const colour = String(value ?? '').toLowerCase();
   return ACCENT_PRESETS.includes(colour) || /^#[0-9a-f]{6}$/.test(colour) ? colour : fallback;
 }
 
+/** Forces every setting into its allowed range or list of choices, in place. */
 function clampSettings(s: AppSettings): void {
   s.library.scanIntervalMinutes = clampInt(s.library.scanIntervalMinutes, 1, 10080, 60);
   s.playback.watchedThreshold = Math.min(0.99, Math.max(0.5, Number(s.playback.watchedThreshold) || 0.9));
@@ -391,6 +429,7 @@ function clampSettings(s: AppSettings): void {
   if (!HWACCEL_MODES.includes(s.transcode.hwaccel)) s.transcode.hwaccel = 'auto';
 }
 
+/** Forgets all cached settings so the next read comes from the database. */
 export function invalidateSettingsCache(): void {
   globalCache = null;
   userCache.clear();

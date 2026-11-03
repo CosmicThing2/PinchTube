@@ -1,10 +1,27 @@
+/*
+ * playlists.ts — the database side of playlists.
+ *
+ * Every user can make playlists. A playlist can be shared, making it
+ * visible (read-only) to every other user. A shared playlist is "strict" by
+ * default: each viewer only sees the videos from channels they have access
+ * to. With strict turned off it also lends its videos to viewers who could
+ * not otherwise see those channels (that rule lives in videos.ts too).
+ * Each viewer can also pick their own playback quality for any playlist.
+ *
+ * This file lists, creates, edits, reorders and deletes playlists and their
+ * videos, always checking the user owns a playlist before changing it.
+ * routes/playlists.ts is the API on top of it.
+ */
+
 import { db } from '../db.js';
 import { QUALITY_CHOICES } from '../media/renditions.js';
 import { channelScope, mapVideo, mergeOrder, ownerSees, type VideoDto, type VideoRow, type Viewer } from './videos.js';
 
+/** Limits: name length, and how many videos one playlist may hold. */
 export const PLAYLIST_NAME_MAX = 100;
 const PLAYLIST_ITEMS_MAX = 5000;
 
+/** A playlist as the web app receives it. */
 export interface PlaylistDto {
   id: number;
   name: string;
@@ -24,6 +41,7 @@ export interface PlaylistDto {
   updatedAt: number;
 }
 
+/** What playlistSelect() returns per playlist. */
 interface PlaylistRow {
   id: number;
   user_id: number;
@@ -72,6 +90,7 @@ function playlistSelect(viewer: Viewer): string {
       JOIN users u ON u.id = pl.user_id`;
 }
 
+/** A database row into the shape the web app receives. */
 function mapPlaylist(row: PlaylistRow, viewer: Viewer): PlaylistDto {
   return {
     id: row.id,
@@ -108,6 +127,7 @@ export function getPlaylist(viewer: Viewer, id: number): PlaylistDto | undefined
   return row ? mapPlaylist(row, viewer) : undefined;
 }
 
+/** A playlist's videos in order, limited to the ones this viewer may see. */
 export function playlistVideos(viewer: Viewer, id: number): VideoDto[] {
   const rows = db
     .prepare(
@@ -126,25 +146,32 @@ export function playlistVideos(viewer: Viewer, id: number): VideoDto[] {
   return rows.map((row) => mapVideo(row, viewer));
 }
 
+// ---- changing playlists (owner only) ----------------------------------------
+
+/** Whether the user owns the playlist, which every change below requires. */
 function owned(userId: number, id: number): boolean {
   return Boolean(db.prepare('SELECT 1 FROM playlists WHERE id = ? AND user_id = ?').get(id, userId));
 }
 
+/** Marks a playlist as just changed, which moves it up the list. */
 function touch(id: number): void {
   db.prepare('UPDATE playlists SET updated_at = ? WHERE id = ?').run(Date.now(), id);
 }
 
+/** A tidied playlist name, or null if there is nothing left of it. */
 export function cleanName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const name = raw.replace(/\s+/g, ' ').trim().slice(0, PLAYLIST_NAME_MAX);
   return name || null;
 }
 
+/** The quality if it is one PinchTube knows, else null. */
 export function validQuality(raw: unknown): string | null {
   if (raw === 'auto') return 'auto';
   return typeof raw === 'string' && QUALITY_CHOICES.includes(raw) ? raw : null;
 }
 
+/** Makes a new playlist and returns its id. */
 export function createPlaylist(userId: number, name: string, shared: boolean, quality: string): number {
   const now = Date.now();
   const info = db
@@ -188,6 +215,7 @@ export function setPlaylistQuality(userId: number, id: number, quality: string):
   ).run(userId, id, quality);
 }
 
+/** Deletes one of the user's playlists; its items and everyone's preferences go with it. */
 export function deletePlaylist(userId: number, id: number): boolean {
   return db.prepare('DELETE FROM playlists WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
 }
@@ -209,6 +237,7 @@ export function addToPlaylist(userId: number, id: number, videoId: string): 'ok'
   return 'ok';
 }
 
+/** Takes a video out of one of the user's playlists. */
 export function removeFromPlaylist(userId: number, id: number, videoId: string): boolean {
   if (!owned(userId, id)) return false;
   db.prepare('DELETE FROM playlist_items WHERE playlist_id = ? AND video_id = ?').run(id, videoId);
@@ -216,6 +245,7 @@ export function removeFromPlaylist(userId: number, id: number, videoId: string):
   return true;
 }
 
+/** Puts a playlist in the given order (see mergeOrder in videos.ts). */
 export function reorderPlaylist(userId: number, id: number, ids: unknown): boolean {
   if (!owned(userId, id)) return false;
   const existing = (

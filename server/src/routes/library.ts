@@ -1,3 +1,20 @@
+/*
+ * routes/library.ts — the API for browsing the library and recording progress.
+ *
+ *   GET  /api/home                  the home page's rows, built from the user's settings
+ *   GET  /api/home/channels         every channel row with its on/off and pinned state
+ *   GET  /api/videos                a page of videos: search, channel, sort, watched filter
+ *   GET  /api/videos/:id            one video plus everything the player needs:
+ *                                   the qualities on offer, playback settings, "up next"
+ *   POST /api/videos/:id/progress   save how far into a video the user is
+ *   POST /api/videos/:id/watched    mark a video watched / unwatched
+ *   GET  /api/channels              the channels the user may see
+ *   GET  /api/channels/:id          one channel
+ *   GET  /api/stats                 library counts
+ *   GET  /api/stats/sizes           disk use per channel and codec (admin)
+ * The queries live in lib/videos.ts; access rules are applied there too.
+ */
+
 import type { FastifyInstance } from 'fastify';
 import { settingsFor } from '../settings.js';
 import {
@@ -20,6 +37,7 @@ import { AUDIO_RENDITION, allowOriginal, renditionsFor, shortSide } from '../med
 
 const SORTS: SortKey[] = ['date_desc', 'date_asc', 'title_asc', 'title_desc', 'added_desc', 'added_asc'];
 
+/** A sort from the address bar if it is a known one, else the user's default. */
 function parseSort(raw: unknown, fallback: SortKey): SortKey {
   const value = String(raw ?? '');
   return (SORTS.includes(value as SortKey) ? value : fallback) as SortKey;
@@ -60,6 +78,8 @@ function orderChannelRows(
 }
 
 export function registerLibraryRoutes(app: FastifyInstance): void {
+  // The home page: each enabled row in the user's chosen order. "Channels"
+  // expands into one row per channel, pinned ones first.
   app.get('/api/home', async (request) => {
     const viewer = request.user!;
     const settings = settingsFor(viewer.id);
@@ -124,6 +144,7 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     };
   });
 
+  // A page of videos for the All videos, search and channel pages.
   app.get('/api/videos', async (request) => {
     const q = (request.query ?? {}) as any;
     const viewer = request.user!;
@@ -149,6 +170,7 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     return { ...result, page, pageSize: limit };
   });
 
+  // Everything the watch page needs for one video.
   app.get('/api/videos/:id', async (request, reply) => {
     const { id } = request.params as any;
     const viewer = request.user!;
@@ -169,6 +191,7 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
       (v) => v.id !== video.id,
     );
 
+    // The player's settings travel with the video, so the watch page needs one request.
     return {
       video,
       // False when the video was reached through a playlist that lets the
@@ -211,6 +234,7 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     };
   });
 
+  // Sent by the player every few seconds while playing, and when leaving the page.
   app.post('/api/videos/:id/progress', async (request, reply) => {
     const { id } = request.params as any;
     const body = (request.body ?? {}) as any;
@@ -224,6 +248,7 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  // The "Mark as watched / unwatched" menu items.
   app.post('/api/videos/:id/watched', async (request, reply) => {
     const { id } = request.params as any;
     const body = (request.body ?? {}) as any;
@@ -234,12 +259,14 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  // The Channels page.
   app.get('/api/channels', async (request) => {
     const q = (request.query ?? {}) as any;
     const order = q.order === 'recent' ? 'recent' : 'name';
     return { items: listChannels(request.user!, order) };
   });
 
+  // One channel's header (its videos come from /api/videos?channel=…).
   app.get('/api/channels/:id', async (request, reply) => {
     const { id } = request.params as any;
     const channel = getChannel(request.user!, String(id));

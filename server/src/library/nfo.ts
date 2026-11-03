@@ -1,3 +1,13 @@
+/*
+ * nfo.ts — reads the .nfo metadata files that sit next to the videos.
+ *
+ * Downloaders such as Pinchflat write a small XML file in the Kodi/Jellyfin
+ * format beside each video (title, description, upload date, YouTube id)
+ * and one per channel folder (tvshow.nfo: the channel's name and
+ * description). This file parses those into plain objects, coping with the
+ * variations different tools produce. scanner.ts uses it while scanning.
+ */
+
 import fs from 'node:fs';
 import { XMLParser } from 'fast-xml-parser';
 
@@ -11,6 +21,7 @@ const parser = new XMLParser({
   parseAttributeValue: false,
 });
 
+/** The handful of named HTML codes that turn up in titles. */
 const NAMED_ENTITIES: Record<string, string> = {
   amp: '&',
   lt: '<',
@@ -34,6 +45,10 @@ function decodeEntities(text: string): string {
   });
 }
 
+/**
+ * The text of a tag, however the parser shaped it (a repeated tag becomes a
+ * list, a tag with attributes an object), cleaned up; null when empty.
+ */
 function first(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (Array.isArray(value)) return first(value[0]);
@@ -65,6 +80,9 @@ export function parseNfoDate(raw: string | null): number | null {
   return Number.isFinite(fallback) ? fallback : null;
 }
 
+// ---- per-video .nfo ---------------------------------------------------------
+
+/** The fields read from a video's .nfo. */
 export interface VideoNfo {
   title: string | null;
   plot: string | null;
@@ -76,6 +94,7 @@ export interface VideoNfo {
   episode: string | null;
 }
 
+/** Reads one video's .nfo; null if it is missing or not valid XML. */
 export function readVideoNfo(file: string): VideoNfo | null {
   let xml: string;
   try {
@@ -114,12 +133,16 @@ export function readVideoNfo(file: string): VideoNfo | null {
   };
 }
 
+// ---- per-channel tvshow.nfo -------------------------------------------------
+
+/** The fields read from a channel's tvshow.nfo. */
 export interface ChannelNfo {
   title: string | null;
   plot: string | null;
   youtubeId: string | null;
 }
 
+/** Reads a channel folder's tvshow.nfo; null if missing or unreadable. */
 export function readChannelNfo(file: string): ChannelNfo | null {
   let xml: string;
   try {

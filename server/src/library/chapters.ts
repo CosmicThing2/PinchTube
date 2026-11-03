@@ -1,3 +1,17 @@
+/*
+ * chapters.ts — works out a video's chapters, and reads YouTube ids.
+ *
+ * Chapters come from one of two places:
+ *   - embedded in the file, which is also how SponsorBlock segments arrive
+ *     (tools such as Pinchflat/yt-dlp add them as chapters titled
+ *     "[SponsorBlock]: Sponsor"); these are marked kind 'sponsor'
+ *   - otherwise, timestamps listed in the video's description, using the
+ *     same rules YouTube uses to decide a description has chapters
+ * scanner.ts calls these while scanning and stores the result as JSON on the
+ * video. The web app draws them on the progress bar (web/src/lib/chapters.ts
+ * and player/Player.tsx).
+ */
+
 export interface Chapter {
   start: number;
   end: number;
@@ -9,6 +23,10 @@ export interface Chapter {
 const SPONSORBLOCK_PREFIX = /^\[SponsorBlock\]:\s*/i;
 const MIN_CHAPTER_SECONDS = 1;
 
+/**
+ * Sorts chapters that only have start times, gives each one an end (the next
+ * chapter's start, or the end of the video), and drops any under a second.
+ */
 function finalise(raw: { start: number; title: string; kind: Chapter['kind'] }[], duration: number | null): Chapter[] {
   const sorted = raw
     .filter((c) => Number.isFinite(c.start) && c.start >= 0)
@@ -52,6 +70,7 @@ export function chaptersFromProbe(raw: unknown, duration: number | null): Chapte
 // A timestamp anywhere on the line: "0:00 Intro", "Intro - 0:00", "[1:02:03] Outro".
 const LINE_STAMP = /(?:^|[\s(\[])((?:\d{1,2}:)?\d{1,2}:\d{2})(?=$|[\s)\]])/;
 
+/** "1:02:03" or "2:03" to seconds. */
 function stampToSeconds(stamp: string): number | null {
   const parts = stamp.split(':').map(Number);
   if (parts.some((n) => !Number.isInteger(n))) return null;
@@ -99,6 +118,7 @@ export function youtubeIdFromName(name: string): string | null {
   return match ? match[1] : null;
 }
 
+/** Whether a string has the shape of a YouTube video id. */
 export function isYoutubeId(value: string | null | undefined): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{11}$/.test(value);
 }

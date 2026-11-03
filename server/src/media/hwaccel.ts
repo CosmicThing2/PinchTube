@@ -1,3 +1,15 @@
+/*
+ * hwaccel.ts — finds out which graphics-card video encoders actually work.
+ *
+ * Converting video on a graphics card is many times faster than on the
+ * processor. At startup (called from index.ts) this checks the ffmpeg
+ * version, which hardware encoders it was built with, and whether a GPU
+ * device was passed into the container, then tries a tiny real encode with
+ * each. The results are shown under Settings → Transcoding
+ * (routes/settings.ts), and chosenAccel() tells transcoder.ts which one to
+ * use, following the "Hardware acceleration" setting.
+ */
+
 import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { config } from '../config.js';
@@ -20,12 +32,14 @@ export type AccelKind = 'vaapi' | 'qsv' | 'nvenc';
 /** Preference when the setting is "auto". */
 const AUTO_ORDER: AccelKind[] = ['nvenc', 'vaapi', 'qsv'];
 
+/** Names shown on the settings page. */
 export const ACCEL_LABELS: Record<AccelKind, string> = {
   vaapi: 'VAAPI (AMD / Intel)',
   qsv: 'Intel Quick Sync',
   nvenc: 'NVIDIA NVENC',
 };
 
+/** The hardware route a transcode should use. */
 export interface Accel {
   kind: AccelKind;
   /** The render node for vaapi and qsv. */
@@ -34,6 +48,7 @@ export interface Accel {
   gpuScale: boolean;
 }
 
+/** Everything the startup check found out. */
 export interface HwCapabilities {
   ffmpegVersion: string | null;
   vaapiDevice: string | null;
@@ -50,10 +65,12 @@ export interface HwCapabilities {
   error: string | null;
 }
 
+/** Where a passed-through GPU usually appears inside the container. */
 const VAAPI_DEVICE_CANDIDATES = ['/dev/dri/renderD128', '/dev/dri/renderD129', '/dev/dri/card0'];
 
 const none = (): Record<AccelKind, boolean> => ({ vaapi: false, qsv: false, nvenc: false });
 
+/** The latest results; "not tested yet" until detectHardware() has run. */
 let caps: HwCapabilities = {
   ffmpegVersion: null,
   vaapiDevice: null,
@@ -66,6 +83,7 @@ let caps: HwCapabilities = {
   error: null,
 };
 
+/** Runs ffmpeg and resolves with everything it printed. */
 function run(args: string[], timeout = 15_000): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(config.ffmpeg, args, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
@@ -91,6 +109,7 @@ function tryEncode(args: string[]): Promise<string | null> {
   });
 }
 
+/** ffmpeg's built-in test pattern, so the check needs no video file. */
 const TEST_INPUT = ['-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30'];
 
 const WORKING = 'Working';
@@ -119,6 +138,7 @@ function explain(kind: AccelKind, raw: string): string {
   return 'The GPU did not accept a test encode';
 }
 
+/** Runs the whole check (a few seconds at startup) and stores the results. */
 export async function detectHardware(): Promise<HwCapabilities> {
   const next: HwCapabilities = {
     ffmpegVersion: null,
@@ -132,6 +152,7 @@ export async function detectHardware(): Promise<HwCapabilities> {
     error: null,
   };
 
+  // Is ffmpeg there at all, and which version?
   try {
     const version = await run(['-hide_banner', '-version']);
     const match = version.match(/ffmpeg version (\S+)/i);
@@ -142,6 +163,7 @@ export async function detectHardware(): Promise<HwCapabilities> {
     return caps;
   }
 
+  // Which hardware encoders and filters this ffmpeg was built with.
   let filters = '';
   try {
     const encoders = await run(['-hide_banner', '-encoders']);
@@ -155,6 +177,7 @@ export async function detectHardware(): Promise<HwCapabilities> {
     /* leave everything off */
   }
 
+  // Which GPU device, if any, the container can open.
   for (const device of VAAPI_DEVICE_CANDIDATES) {
     try {
       fs.accessSync(device, fs.constants.R_OK | fs.constants.W_OK);
@@ -223,6 +246,7 @@ export async function detectHardware(): Promise<HwCapabilities> {
   return caps;
 }
 
+/** The stored results, for the settings page. */
 export function hardwareCapabilities(): HwCapabilities {
   return caps;
 }
@@ -236,6 +260,7 @@ export function chosenAccel(): Accel | null {
   return { kind, device: kind === 'nvenc' ? null : caps.vaapiDevice, gpuScale: kind === 'nvenc' && caps.nvencGpuScale };
 }
 
+/** One line saying how videos are being converted, for the log and settings page. */
 export function hardwareStatus(): string {
   const mode = getSettings().transcode.hwaccel;
   if (mode === 'none') return 'Software (libx264) — hardware disabled in settings';

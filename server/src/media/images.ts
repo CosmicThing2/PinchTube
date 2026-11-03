@@ -1,3 +1,13 @@
+/*
+ * images.ts — shrinks artwork to the size the page needs.
+ *
+ * Thumbnails and channel art from the media folder can be large images. The
+ * web app asks for them at a particular width; this makes a smaller WebP
+ * copy with the sharp image library and keeps it in the image cache, so each
+ * size is only made once. If sharp is unavailable, or an image cannot be
+ * converted, the original file is sent instead. Used by routes/images.ts.
+ */
+
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -7,6 +17,7 @@ import { paths } from '../config.js';
 let sharpModule: any = null;
 let sharpChecked = false;
 
+/** The sharp library, or null if it cannot be loaded; checked only once. */
 function loadSharp(): any {
   if (sharpChecked) return sharpModule;
   sharpChecked = true;
@@ -19,8 +30,10 @@ function loadSharp(): any {
   return sharpModule;
 }
 
+/** The only widths ever made, so the cache holds a few sizes per image at most. */
 export const ALLOWED_WIDTHS = [160, 240, 320, 480, 640, 960, 1280, 1920];
 
+/** The requested width, snapped to the nearest allowed one. */
 export function normaliseWidth(raw: unknown): number | null {
   const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
   if (!Number.isFinite(n)) return null;
@@ -32,11 +45,13 @@ export function normaliseWidth(raw: unknown): number | null {
   return best;
 }
 
+/** The file to send and its type. */
 export interface ServedImage {
   file: string;
   contentType: string;
 }
 
+/** Conversions in progress, so two requests for the same size share one. */
 const inflight = new Map<string, Promise<ServedImage>>();
 
 /**
@@ -56,6 +71,7 @@ export async function resizedImage(source: string, width: number | null): Promis
     throw new Error('Artwork file is missing');
   }
 
+  // The cached copy is named from the source file's path, version and the width.
   const key = crypto
     .createHash('sha1')
     .update(`${source}|${Math.floor(stat.mtimeMs)}|${stat.size}|${width}`)
@@ -94,6 +110,7 @@ export async function resizedImage(source: string, width: number | null): Promis
   return task;
 }
 
+/** The image type to declare for a file, from its extension. */
 export function contentTypeFor(file: string): string {
   switch (path.extname(file).toLowerCase()) {
     case '.png':

@@ -1,14 +1,30 @@
+/*
+ * cache.ts — looks after the cache folder's size.
+ *
+ * Converted video segments are kept in the cache folder as
+ * transcode/<video id>/<quality>/, so watching the same thing again needs no
+ * work. This file measures that cache, deletes the least recently watched
+ * folders once it grows past the "cache size" setting, empties it on
+ * request (Settings → Transcoding, via routes/settings.ts), and clears it
+ * once after an upgrade that changes how segments are made. The resized
+ * image cache (images.ts, poster.ts) can be emptied from here too.
+ *
+ * transcoder.ts calls evictCache() after each job, and regularly while running.
+ */
+
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { paths } from '../config.js';
 import { getSettings } from '../settings.js';
 
+/** One quality of one video in the cache. */
 export interface CacheEntry {
   dir: string;
   bytes: number;
   lastAccess: number;
 }
 
+/** Total size of a folder's files, including sub-folders. */
 async function dirSize(dir: string): Promise<number> {
   let total = 0;
   let entries: string[];
@@ -63,6 +79,7 @@ export async function listCacheEntries(): Promise<CacheEntry[]> {
   return out;
 }
 
+/** How much space the transcode cache takes, for the settings page. */
 export async function cacheSizeBytes(): Promise<number> {
   const entries = await listCacheEntries();
   return entries.reduce((sum, e) => sum + e.bytes, 0);
@@ -117,6 +134,7 @@ export async function evictCache(protect: Set<string> = new Set()): Promise<numb
 const CACHE_FORMAT = '2';
 const formatFile = () => path.join(paths.transcodeCache, '.format');
 
+/** Deletes every cached segment and stamps the empty cache with the current format. */
 export async function clearTranscodeCache(): Promise<void> {
   await fsp.rm(paths.transcodeCache, { recursive: true, force: true });
   await fsp.mkdir(paths.transcodeCache, { recursive: true });
@@ -132,6 +150,7 @@ export async function checkCacheFormat(): Promise<boolean> {
   return hadSegments;
 }
 
+/** Deletes every resized image and generated thumbnail; they are remade when needed. */
 export async function clearImageCache(): Promise<void> {
   await fsp.rm(paths.imageCache, { recursive: true, force: true });
   await fsp.mkdir(paths.imageCache, { recursive: true });

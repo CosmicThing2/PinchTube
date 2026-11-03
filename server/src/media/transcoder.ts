@@ -1,3 +1,27 @@
+/*
+ * transcoder.ts — converts videos into HLS segments while you watch.
+ *
+ * When a video plays at a converted quality (anything but "Original"), the
+ * player asks for numbered segments a few seconds long. ensureSegment() is
+ * called for each request: if the segment is already in the cache it is
+ * sent straight away; if not, an ffmpeg "job" is started at that point in
+ * the video and keeps encoding ahead from there, writing one file per
+ * segment, and the request waits until its segment appears.
+ *
+ * The rest of the file manages those jobs:
+ *   - one job per video and quality; seeking far ahead restarts it there
+ *   - a limit on how many jobs run at once (the oldest is stopped)
+ *   - jobs nobody has asked anything of for 90 seconds are stopped
+ *   - graphics-card encoding when available (hwaccel.ts), retrying a video
+ *     in software if the hardware cannot handle it
+ *   - "warm-ups": short extra encodes that prepare the few seconds after a
+ *     sponsor segment so skipping it does not pause
+ *   - status for Settings and the player's "Stats for nerds"
+ *
+ * Related: routes/stream.ts calls into here; renditions.ts defines the
+ * qualities; hls.ts writes the matching playlists; cache.ts limits disk use.
+ */
+
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -11,10 +35,14 @@ import { isAudioOnly, outputSize } from './renditions.js';
 
 /** How far ahead of the encoder a request may be before we restart at that point. */
 const LOOKAHEAD_SEGMENTS = 3;
+/** How long a request waits for its segment before giving up. */
 const SEGMENT_WAIT_MS = 90_000;
+/** How often a waiting request checks whether its segment has appeared. */
 const POLL_MS = 120;
+/** A job nobody has asked anything of for this long is stopped. */
 const IDLE_JOB_MS = 90_000;
 
+/** The facts about a video file a transcode needs. */
 export interface TranscodeSource {
   id: string;
   path: string;
@@ -23,6 +51,7 @@ export interface TranscodeSource {
   height: number | null;
 }
 
+/** A running ffmpeg encoding one video at one quality. */
 interface Job {
   key: string;
   videoId: string;
@@ -44,6 +73,7 @@ interface Job {
   segmentSeconds: number;
 }
 
+/** Running jobs, keyed "<video id>/<quality>". */
 const jobs = new Map<string, Job>();
 /**
  * Short side encodes that make a few segments ahead of time, keyed like jobs.
@@ -57,6 +87,7 @@ const WARM_SEGMENTS = 3;
 /** Videos whose hardware pipeline failed — these stay on software for this run. */
 const hwBlocklist = new Set<string>();
 
+/** The timer that stops idle jobs and trims the cache. */
 let reaper: NodeJS.Timeout | null = null;
 let log: { info: (m: string) => void; warn: (m: string) => void; debug: (m: string) => void } = {
   info: () => {},
@@ -64,14 +95,19 @@ let log: { info: (m: string) => void; warn: (m: string) => void; debug: (m: stri
   debug: () => {},
 };
 
+/** index.ts hands over the server's logger. */
 export function setTranscodeLogger(logger: typeof log): void {
   log = logger;
 }
 
+// ---- segment files ----------------------------------------------------------
+
+/** The cache folder holding one video's segments at one quality. */
 export function renditionDir(videoId: string, renditionId: string): string {
   return path.join(paths.transcodeCache, videoId, renditionId);
 }
 
+/** A segment's file name, e.g. seg-00042.ts, matching what the playlists list. */
 export function segmentName(index: number): string {
   return 'seg-' + String(index).padStart(5, '0') + '.ts';
 }
@@ -80,6 +116,7 @@ function segmentPath(dir: string, index: number): string {
   return path.join(dir, segmentName(index));
 }
 
+/** How many segments a video of this length has. */
 export function segmentCount(duration: number, segmentSeconds: number): number {
   return Math.max(1, Math.ceil(duration / segmentSeconds));
 }
@@ -101,6 +138,7 @@ function segmentReady(dir: string, index: number): boolean {
   return exists(segmentPath(dir, index));
 }
 
+/** The last segment a job has finished so far, counting up from where it started. */
 function currentHead(dir: string, startSegment: number): number {
   let head = startSegment - 1;
   for (let i = startSegment; i < startSegment + 5000; i++) {
@@ -110,6 +148,9 @@ function currentHead(dir: string, startSegment: number): number {
   return head;
 }
 
+// ---- building the ffmpeg command --------------------------------------------
+
+/** What is needed to build a job's ffmpeg command, before it is running. */
 type JobPlan = Omit<Job, 'proc' | 'exited' | 'exitCode' | 'killed' | 'stderr' | 'lastAccess' | 'startedAt'>;
 
 /** `seconds` limits the output (a warm-up); without it the job runs to the end. */
@@ -138,6 +179,7 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
     return args;
   }
 
+  // ---- video: decoding, scaling and encoding, per hardware route ----
   // Decoding happens on the GPU too where possible, so frames never have to
   // make the round trip through system memory.
   if (accel?.kind === 'vaapi' && accel.device) {
@@ -150,6 +192,7 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
     if (accel.gpuScale) args.push('-hwaccel_output_format', 'cuda');
   }
 
+  // Start at the requested segment's time, and keep only the first video and audio stream.
   if (start > 0) args.push('-ss', String(start));
   args.push('-i', source.path);
 
@@ -192,6 +235,7 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
   args.push('-g', String(gop));
   args.push('-keyint_min', String(gop));
 
+  // Audio: stereo AAC, which every browser plays.
   args.push('-c:a', 'aac', '-b:a', `${rendition.audioBitrate}k`, '-ac', '2', '-ar', '48000');
 
   // The encoder always sees a timeline starting at zero, but the segments must
@@ -205,6 +249,7 @@ function buildArgs(job: JobPlan, accel: Accel | null, seconds?: number): string[
   return args;
 }
 
+/** ffmpeg's options for cutting the output into numbered HLS segment files. */
 function hlsMuxerArgs(segmentSeconds: number, startSegment: number, dir: string, playlist: string): string[] {
   return [
     '-f', 'hls',
@@ -219,6 +264,9 @@ function hlsMuxerArgs(segmentSeconds: number, startSegment: number, dir: string,
   ];
 }
 
+// ---- starting and stopping jobs ---------------------------------------------
+
+/** Kills a job's ffmpeg and tidies up anything it left half-written. */
 async function stopJob(job: Job, reason: string): Promise<void> {
   if (jobs.get(job.key) === job) jobs.delete(job.key);
   job.killed = true;
@@ -245,6 +293,7 @@ async function stopJob(job: Job, reason: string): Promise<void> {
   }
 }
 
+/** Makes room for a new job by stopping the least recently used ones. */
 async function enforceJobLimit(): Promise<void> {
   const limit = getSettings().transcode.maxConcurrentJobs;
   while (jobs.size >= limit) {
@@ -257,6 +306,7 @@ async function enforceJobLimit(): Promise<void> {
   }
 }
 
+/** Starts ffmpeg for one video and quality from a given segment onwards. */
 async function startJob(
   source: TranscodeSource,
   rendition: Rendition,
@@ -299,6 +349,7 @@ async function startJob(
     startedAt: Date.now(),
   };
 
+  // Keep the end of ffmpeg's error output for the log if it fails.
   proc.stderr?.on('data', (chunk: Buffer) => {
     job.stderr = (job.stderr + chunk.toString()).slice(-4000);
   });
@@ -310,6 +361,7 @@ async function startJob(
     log.warn(`transcode: failed to spawn ffmpeg for ${key}: ${err}`);
   });
 
+  // When ffmpeg ends, finished or not: retry in software if the hardware failed outright.
   proc.on('close', (code) => {
     job.exited = true;
     job.exitCode = code;
@@ -335,6 +387,7 @@ async function startJob(
   return job;
 }
 
+/** Folders of running jobs, which cache eviction must leave alone. */
 function protectedDirs(): Set<string> {
   return new Set(Array.from(jobs.values(), (j) => j.dir));
 }
@@ -353,6 +406,7 @@ function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** Waits a while. */
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -371,6 +425,7 @@ export async function ensureSegment(
   const dir = renditionDir(source.id, rendition.id);
   const file = segmentPath(dir, index);
 
+  // Already made: send it straight away.
   if (segmentReady(dir, index)) {
     void touchCacheDir(dir);
     const live = jobs.get(key);
@@ -378,6 +433,7 @@ export async function ensureSegment(
     return file;
   }
 
+  // Not made yet: use the running job if it will get there soon, otherwise start one here.
   const job = await oneAtATime(async () => {
     // Another request may have produced it, or started a job, while this one waited.
     if (segmentReady(dir, index)) return null;
@@ -397,6 +453,7 @@ export async function ensureSegment(
   });
   if (job) job.lastAccess = Date.now();
 
+  // Wait for ffmpeg to finish the segment, keeping the job marked as in use.
   const deadline = Date.now() + SEGMENT_WAIT_MS;
   while (Date.now() < deadline) {
     if (segmentReady(dir, index)) {
@@ -420,6 +477,7 @@ export async function ensureSegment(
   throw new Error(`Timed out waiting for segment ${index} of ${key}`);
 }
 
+/** Every 15 seconds: stop idle jobs and keep the cache within its size limit. */
 export function startReaper(): void {
   if (reaper) return;
   reaper = setInterval(() => {
@@ -432,6 +490,9 @@ export function startReaper(): void {
   reaper.unref?.();
 }
 
+// ---- warm-ups before a sponsor skip -----------------------------------------
+
+/** Kills every warm-up encode. */
 function stopWarmers(): void {
   for (const proc of warmers.values()) {
     try {
@@ -495,6 +556,9 @@ export async function warmSegments(source: TranscodeSource, rendition: Rendition
   });
 }
 
+// ---- status and housekeeping ------------------------------------------------
+
+/** Stops every ffmpeg when the server shuts down. */
 export async function shutdownTranscoder(): Promise<void> {
   if (reaper) clearInterval(reaper);
   reaper = null;
@@ -502,6 +566,7 @@ export async function shutdownTranscoder(): Promise<void> {
   await Promise.all(Array.from(jobs.values(), (job) => stopJob(job, 'shutdown')));
 }
 
+/** The running jobs, for Settings → Transcoding. */
 export function activeJobs(): { video: string; rendition: string; startSegment: number; hardware: boolean }[] {
   return Array.from(jobs.values(), (job) => ({
     video: job.videoId,

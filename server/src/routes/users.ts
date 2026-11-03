@@ -1,3 +1,16 @@
+/*
+ * routes/users.ts — the API an administrator uses to manage accounts.
+ *
+ *   GET    /api/users        every account, plus every channel (for the access picker)
+ *   POST   /api/users        create an account
+ *   PATCH  /api/users/:id    rename, change password, admin rights, channel
+ *                            access, reset two-factor, or sign out everywhere
+ *   DELETE /api/users/:id    delete an account and everything that is theirs
+ * Used by the Users section of the Settings page
+ * (web/src/components/UsersPanel.tsx). Username and password rules are
+ * shared with routes/auth.ts; the account basics are in auth.ts.
+ */
+
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db.js';
 import { adminCount, changePassword, createUser, destroyUserSessions, findUserRow, getUserRow } from '../auth.js';
@@ -5,6 +18,7 @@ import { forgetUserSettings } from '../settings.js';
 import { allChannelNames } from '../lib/videos.js';
 import { passwordProblem, usernameProblem } from './auth.js';
 
+/** What listUsers() reads per account. */
 interface UserListRow {
   id: number;
   username: string;
@@ -15,12 +29,14 @@ interface UserListRow {
   last_active: number | null;
 }
 
+/** The channels granted to a user who does not have access to all of them. */
 function channelsOf(userId: number): string[] {
   return (db.prepare('SELECT channel_id FROM user_channels WHERE user_id = ?').all(userId) as { channel_id: string }[]).map(
     (row) => row.channel_id,
   );
 }
 
+/** Replaces a user's granted channels, ignoring any id that is not a real channel. */
 function setChannels(userId: number, ids: unknown): void {
   if (!Array.isArray(ids)) return;
   const known = new Set(allChannelNames().map((c) => c.id));
@@ -34,6 +50,7 @@ function setChannels(userId: number, ids: unknown): void {
   })();
 }
 
+/** Every account as the Users panel shows it (never passwords or 2FA secrets). */
 function listUsers() {
   const rows = db
     .prepare(
@@ -63,6 +80,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
 
   app.get('/api/users', adminOnly, async () => ({ items: listUsers(), channels: allChannelNames() }));
 
+  // Create an account, optionally limited to some channels.
   app.post('/api/users', adminOnly, async (request, reply) => {
     const body = (request.body ?? {}) as any;
     const problem = usernameProblem(body.username) ?? passwordProblem(body.password);
@@ -79,6 +97,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
     return { items: listUsers() };
   });
 
+  // Change an account. Everything is checked first, then applied together.
   app.patch('/api/users/:id', adminOnly, async (request, reply) => {
     const id = Number.parseInt(String((request.params as any).id), 10);
     const body = (request.body ?? {}) as any;
@@ -127,6 +146,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
     return { items: listUsers() };
   });
 
+  // Delete an account (never your own, never the last admin).
   app.delete('/api/users/:id', adminOnly, async (request, reply) => {
     const id = Number.parseInt(String((request.params as any).id), 10);
     const target = Number.isSafeInteger(id) ? getUserRow(id) : undefined;

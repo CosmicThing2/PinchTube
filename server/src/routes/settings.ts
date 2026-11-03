@@ -1,3 +1,19 @@
+/*
+ * routes/settings.ts — the API behind the Settings page.
+ *
+ *   GET  /api/settings                  the user's settings, and the allowed choices
+ *   PUT  /api/settings                  save changes (library/transcode: admins only)
+ *   POST /api/settings/scan             start a library scan            (admin)
+ *   GET  /api/settings/scan-status      how the scan is going           (admin)
+ *   GET  /api/settings/validate-path    check a media folder path       (admin)
+ *   POST /api/settings/cache/clear      empty the transcode/image cache (admin)
+ *   GET  /api/system                    status for the System section   (admin)
+ * Saving reacts to a few changes straight away: the library watcher and
+ * timer are reset, a new media folder triggers a full rescan, and a new
+ * segment length empties the transcode cache. The settings themselves are
+ * defined and checked in settings.ts.
+ */
+
 import fsp from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
@@ -21,6 +37,7 @@ import { libraryStats } from '../lib/videos.js';
 export function registerSettingsRoutes(app: FastifyInstance): void {
   const adminOnly = { config: { admin: true } };
 
+  // The user's settings, plus the lists the page's drop-downs offer.
   app.get('/api/settings', async (request) => {
     const user = request.user!;
     return {
@@ -35,6 +52,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
     };
   });
 
+  // Save settings, then apply anything that needs acting on now.
   app.put('/api/settings', async (request, reply) => {
     const user = request.user!;
     const body = (request.body ?? {}) as any;
@@ -59,6 +77,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
     return { settings: visibleSettings(next, user.isAdmin) };
   });
 
+  // "Scan now" / "Full rescan"; runs in the background.
   app.post('/api/settings/scan', adminOnly, async (request) => {
     const body = (request.body ?? {}) as any;
     const full = body.full === true;
@@ -68,6 +87,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
 
   app.get('/api/settings/scan-status', adminOnly, async () => ({ scan: scanState }));
 
+  // Checks a media folder path before it is saved, listing a few channel folders found there.
   app.get('/api/settings/validate-path', adminOnly, async (request) => {
     const q = (request.query ?? {}) as any;
     const target = typeof q.path === 'string' && q.path.trim() ? q.path.trim() : getSettings().library.mediaPath;
@@ -88,6 +108,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
     }
   });
 
+  // Empty the transcode cache, the image cache, or both.
   app.post('/api/settings/cache/clear', adminOnly, async (request) => {
     const body = (request.body ?? {}) as any;
     const which = body.which === 'images' || body.which === 'transcode' ? body.which : 'all';
@@ -96,6 +117,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
     return { ok: true, cleared: which };
   });
 
+  // Library numbers, scan state, encoder status, cache use, folders and version.
   app.get('/api/system', adminOnly, async (request) => {
     const caps = hardwareCapabilities();
     return {

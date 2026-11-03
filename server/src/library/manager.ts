@@ -1,9 +1,25 @@
+/*
+ * manager.ts — decides when the library gets scanned.
+ *
+ * scanner.ts does the actual scanning; this file decides when to run it:
+ *   - at startup (called from index.ts)
+ *   - on a timer, every "scan interval" minutes from the library settings
+ *   - when the media folder changes: a filesystem watcher (chokidar) spots
+ *     new or deleted videos and metadata, and after things have been quiet
+ *     for 20 seconds a scan runs, so a burst of downloads becomes one scan
+ *   - when someone presses "Scan now" (routes/settings.ts)
+ * It also makes sure two scans never run at the same time, and restarts the
+ * timer and watcher whenever the library settings change.
+ */
+
 import path from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
 import { getSettings } from '../settings.js';
 import { runScan, scanState } from './scanner.js';
 
+/** How long the folder must be quiet before a scan starts. */
 const WATCH_DEBOUNCE_MS = 20_000;
+/** File types whose arrival or removal is worth a scan. */
 const RELEVANT_EXT = new Set([
   '.mp4', '.mkv', '.webm', '.m4v', '.mov', '.avi', '.ts', '.flv',
   '.nfo', '.jpg', '.jpeg', '.png', '.webp', '.srt', '.vtt',
@@ -20,6 +36,7 @@ let log: { info: (msg: string) => void; warn: (msg: string) => void } = {
   warn: () => {},
 };
 
+/** index.ts hands over the server's logger. */
 export function setLibraryLogger(logger: typeof log): void {
   log = logger;
 }
@@ -36,6 +53,10 @@ function queueScan(reason: string, full = false): void {
   }, WATCH_DEBOUNCE_MS);
 }
 
+/**
+ * Runs a scan now, or once the current one finishes. `full` re-reads every
+ * file rather than only folders that changed.
+ */
 export async function triggerScan(reason: string, full = false): Promise<void> {
   if (scanState.running) {
     // A scan is already in flight; make sure we run once more afterwards.
@@ -61,6 +82,7 @@ export function applyLibrarySettings(): void {
   if (key === currentKey) return;
   currentKey = key;
 
+  // The regular scan timer.
   if (intervalTimer) {
     clearInterval(intervalTimer);
     intervalTimer = null;
@@ -70,6 +92,7 @@ export function applyLibrarySettings(): void {
     Math.max(1, s.scanIntervalMinutes) * 60_000,
   );
 
+  // The filesystem watcher, replaced with one for the current settings.
   void stopWatcher().then(() => {
     if (!s.watcherEnabled) return;
     try {
@@ -103,6 +126,7 @@ export function applyLibrarySettings(): void {
   });
 }
 
+/** Stops watching the media folder. */
 export async function stopWatcher(): Promise<void> {
   if (!watcher) return;
   const w = watcher;
@@ -114,6 +138,7 @@ export async function stopWatcher(): Promise<void> {
   }
 }
 
+/** Stops the timer and watcher when the server shuts down. */
 export async function shutdownLibrary(): Promise<void> {
   if (intervalTimer) clearInterval(intervalTimer);
   if (debounceTimer) clearTimeout(debounceTimer);

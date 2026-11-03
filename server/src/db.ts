@@ -1,3 +1,17 @@
+/*
+ * db.ts — the SQLite database: opening it and keeping its layout up to date.
+ *
+ * Everything PinchTube remembers lives in one SQLite file in the config
+ * folder (config.ts says where): accounts and login sessions, settings, the
+ * scanned library (channels and videos), watch progress, queues and
+ * playlists. This file opens it, defines every table, and upgrades a
+ * database made by an older version ("migrations"). The `user_version`
+ * number stored in the file says which layout it already has.
+ *
+ * Every other server file imports `db` from here to run its queries; the
+ * library ones mostly live in lib/videos.ts, lib/playlists.ts and auth.ts.
+ */
+
 import Database from 'better-sqlite3';
 import { ensureDirs, paths } from './config.js';
 
@@ -7,10 +21,12 @@ ensureDirs();
 
 export const db = new Database(paths.db);
 
+// WAL lets reads carry on while a scan writes; foreign keys make deletes cascade.
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
 
+/** The current table layout. Raise it whenever migrate() gains a new step. */
 const SCHEMA_VERSION = 6;
 
 /** Adds a column if it is missing — the migration path for an existing database. */
@@ -20,15 +36,21 @@ function ensureColumn(table: string, column: string, definition: string): void {
   }
 }
 
+/** Whether a table already has a column. */
 function hasColumn(table: string, column: string): boolean {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   return columns.some((c) => c.name === column);
 }
 
+/**
+ * Brings the database up to SCHEMA_VERSION: creates any missing tables, then
+ * runs each upgrade step in order. Every step is safe to run twice.
+ */
 export function migrate(): void {
   const current = (db.pragma('user_version', { simple: true }) as number) ?? 0;
   if (current >= SCHEMA_VERSION) return;
 
+  // The full current layout, for a brand-new database.
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -282,6 +304,7 @@ export function migrate(): void {
            )
            WHERE last_active IS NULL`);
 
+  // Indexes that speed up the common lookups (replacing older, single-user ones).
   db.exec(`
     DROP INDEX IF EXISTS idx_progress_updated;
     DROP INDEX IF EXISTS idx_queue_position;

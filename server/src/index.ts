@@ -1,3 +1,19 @@
+/*
+ * index.ts — the server's entry point: starts PinchTube.
+ *
+ * Builds the Fastify web server and wires everything together:
+ *   - a request hook that works out who is signed in (auth.ts) and blocks
+ *     API calls from people who are not allowed to make them
+ *   - security headers on every response
+ *   - every group of API routes, one file each under routes/
+ *   - the built web app (the React front end) served as static files, with
+ *     any unknown non-API address handed to it so its own router can take over
+ * Then it detects graphics-card encoding (media/hwaccel.ts), starts the
+ * transcoder's clean-up timer (media/transcoder.ts), starts scanning the
+ * media library (library/manager.ts), prints the first-run setup code if no
+ * accounts exist yet, and shuts everything down cleanly when Docker stops it.
+ */
+
 import path from 'node:path';
 import Fastify, { LogController } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -50,12 +66,14 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
 };
 
+/** Methods that only read; anything else counts as a change and needs the CSRF header. */
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 async function main(): Promise<void> {
   // Directories and schema are prepared when ./db.js is imported.
   pruneSessions();
 
+  // ---- the web server itself ----------------------------------------------
   const app = Fastify({
     logger: { level: config.logLevel },
     trustProxy: config.trustProxy,
@@ -64,6 +82,7 @@ async function main(): Promise<void> {
     logController: new LogController({ disableRequestLogging: true }),
   });
 
+  // The library scanner and transcoder log through Fastify's logger.
   setLibraryLogger({
     info: (msg) => app.log.info(msg),
     warn: (msg) => app.log.warn(msg),
@@ -74,6 +93,7 @@ async function main(): Promise<void> {
     debug: (msg) => app.log.debug(msg),
   });
 
+  // Signed cookies carry the login session (see auth.ts).
   await app.register(cookie, { secret: loadSessionSecret() });
 
   app.decorateRequest('user', null);
@@ -111,6 +131,7 @@ async function main(): Promise<void> {
     }
   });
 
+  // Security headers on every response, and no caching of private API data.
   app.addHook('onSend', async (request, reply, payload) => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) reply.header(name, value);
     // Personal API data must never sit in a shared or on-disk cache.
@@ -120,6 +141,8 @@ async function main(): Promise<void> {
     return payload;
   });
 
+  // ---- API routes ----------------------------------------------------------
+  // A health check for Docker or monitoring tools, then each group of routes.
   app.get('/api/health', { config: { public: true } }, async () => ({ ok: true }));
 
   registerAuthRoutes(app);
@@ -131,6 +154,8 @@ async function main(): Promise<void> {
   registerSettingsRoutes(app);
   registerQueueRoutes(app);
 
+  // ---- the web app ---------------------------------------------------------
+  // The built React app (web/dist, copied to ./public in the image).
   await app.register(fastifyStatic, {
     root: path.resolve(config.publicDir),
     prefix: '/',
@@ -157,26 +182,34 @@ async function main(): Promise<void> {
     return reply.sendFile('index.html');
   });
 
+  // ---- background services -------------------------------------------------
+  // Find out which graphics-card encoders work in this container.
   const caps = await detectHardware();
   if (caps.error) app.log.warn(caps.error);
   app.log.info(`Transcoding: ${hardwareStatus()}`);
 
+  // Transcode cache housekeeping, then start watching the media folder.
   if (await checkCacheFormat()) app.log.info('Cleared transcodes made by an older version');
   startReaper();
   applyLibrarySettings();
 
+  // Scan the library at startup; a full rescan when the scanner's rules changed.
   const forceFull = needsFullRescan();
   if (forceFull) {
     app.log.info('Scanner rules changed since the last run — doing one full rescan');
   }
   void triggerScan('startup', forceFull);
 
+  // Expired login sessions are deleted once a day.
   const dailyPrune = setInterval(() => pruneSessions(), 24 * 60 * 60 * 1000);
   dailyPrune.unref?.();
 
+  // Start accepting connections. config.host is the address inside the
+  // container; which machines can reach it is decided by the compose ports.
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`PinchTube listening on http://${config.host}:${config.port}`);
 
+  // First run: print the one-time code needed to create the admin account.
   const setupCode = currentSetupCode();
   if (setupCode) {
     app.log.warn(`No accounts exist yet. Setup code: ${setupCode}`);
@@ -193,6 +226,8 @@ async function main(): Promise<void> {
     );
   }
 
+  // ---- shutdown --------------------------------------------------------------
+  // Docker sends SIGTERM on stop: finish requests, stop ffmpeg and close the database.
   let closing = false;
   const shutdown = async (signal: string) => {
     if (closing) return;
@@ -214,6 +249,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
+// A startup failure (e.g. the port is taken) ends the process so Docker shows it.
 main().catch((err) => {
   console.error('Failed to start:', err);
   process.exit(1);

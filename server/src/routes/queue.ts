@@ -1,3 +1,17 @@
+/*
+ * routes/queue.ts — the API for each user's play queue.
+ *
+ *   GET    /api/queue              the queue, in order
+ *   POST   /api/queue              add a video to the end
+ *   DELETE /api/queue/:videoId     remove one video
+ *   POST   /api/queue/clear        empty it
+ *   POST   /api/queue/move         nudge a video up or down one place
+ *   POST   /api/queue/order        put it in a given order (drag and drop)
+ * Every change replies with the whole queue so the web app can redraw it.
+ * The database work is in lib/videos.ts; the web side is
+ * web/src/lib/queue-context.tsx and pages/Queue.tsx.
+ */
+
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   addToQueue,
@@ -9,6 +23,7 @@ import {
   reorderQueue,
 } from '../lib/videos.js';
 
+/** The signed-in user's queue, as every route here replies. */
 function queueOf(request: FastifyRequest) {
   const items = listQueue(request.user!);
   return { items, count: items.length };

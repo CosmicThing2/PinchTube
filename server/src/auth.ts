@@ -1,7 +1,25 @@
+/*
+ * auth.ts — accounts, passwords and login sessions.
+ *
+ * The building blocks of signing in, used by routes/auth.ts (sign in, sign
+ * out, setup, two-factor) and routes/users.ts (managing accounts):
+ *   - passwords: hashed with scrypt, never stored as typed
+ *   - users: looking up and creating accounts in the users table
+ *   - sessions: a random token stored in a signed, HTTP-only cookie; only a
+ *     hash of it is kept in the database, so a copied database cannot be
+ *     used to sign in. index.ts calls sessionUser() on every request.
+ *   - the first-run setup code that protects creating the first admin
+ *   - short-lived "tickets" between the password step and the 2FA code step
+ *     (the codes themselves are checked by totp.ts)
+ *   - throttles that lock out repeated wrong guesses
+ */
+
 import crypto from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { db } from './db.js';
 import { config } from './config.js';
+
+// ---- passwords --------------------------------------------------------------
 
 export const SESSION_COOKIE = 'ytm_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — this is mostly a phone app
@@ -12,12 +30,14 @@ const ACTIVITY_RESOLUTION_MS = 60 * 1000;
 // scrypt parameters: ~16 MB of memory per hash, comfortably above the OWASP floor.
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64, maxmem: 64 * 1024 * 1024 };
 
+/** A salted scrypt hash, stored as "scrypt$N$r$p$salt$key" so the settings travel with it. */
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16);
   const key = crypto.scryptSync(password, salt, SCRYPT.keylen, SCRYPT);
   return ['scrypt', SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString('base64'), key.toString('base64')].join('$');
 }
 
+/** Whether a typed password matches a stored hash, compared in constant time. */
 export function verifyPassword(password: string, stored: string): boolean {
   try {
     const [scheme, n, r, p, saltB64, keyB64] = stored.split('$');
@@ -50,6 +70,7 @@ export function burnPasswordCheck(password: string): void {
 
 // ---- users ------------------------------------------------------------------
 
+/** A signed-in user as the rest of the server sees them. */
 export interface User {
   id: number;
   username: string;
@@ -59,6 +80,7 @@ export interface User {
   totpEnabled: boolean;
 }
 
+/** A row of the users table as SQLite returns it. */
 interface UserRow {
   id: number;
   username: string;
@@ -73,6 +95,7 @@ interface UserRow {
   last_active: number | null;
 }
 
+/** Turns a database row into a User, leaving out the password and 2FA secrets. */
 function toUser(row: UserRow): User {
   return {
     id: row.id,
@@ -93,10 +116,12 @@ export function adminCount(): number {
   return row.n;
 }
 
+/** True until the first account is created. */
 export function setupRequired(): boolean {
   return userCount() === 0;
 }
 
+/** Adds an account. The caller checks the username is free and the password long enough. */
 export function createUser(username: string, password: string, isAdmin: boolean): User {
   const info = db
     .prepare('INSERT INTO users (username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?)')
@@ -104,6 +129,7 @@ export function createUser(username: string, password: string, isAdmin: boolean)
   return getUser(Number(info.lastInsertRowid))!;
 }
 
+/** Looks an account up by name (ignoring case), including its secrets. */
 export function findUserRow(username: string): UserRow | undefined {
   return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as UserRow | undefined;
 }
@@ -125,10 +151,12 @@ export function changePassword(userId: number, password: string): void {
 
 // ---- sessions ---------------------------------------------------------------
 
+/** Sessions and tickets are stored only as this hash of the token. */
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+/** Starts a login session and returns the token to put in the cookie. */
 export function createSession(userId: number, userAgent: string | undefined): string {
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now();
@@ -139,14 +167,20 @@ export function createSession(userId: number, userAgent: string | undefined): st
   return token;
 }
 
+/** Signs one device out. */
 export function destroySession(token: string): void {
   db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
 }
 
+/** Signs a user out everywhere. */
 export function destroyUserSessions(userId: number): void {
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
 
+/**
+ * The user a session token belongs to, or null if it is unknown or expired.
+ * Also records the account as active (at most once a minute).
+ */
 export function sessionUser(token: string | undefined): User | null {
   if (!token) return null;
   const row = db
@@ -168,6 +202,7 @@ export function sessionUser(token: string | undefined): User | null {
   return toUser(row);
 }
 
+/** Deletes expired sessions; run at startup and daily. */
 export function pruneSessions(): void {
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
 }
@@ -183,6 +218,7 @@ function secureCookie(request: FastifyRequest): boolean {
   return request.protocol === 'https';
 }
 
+/** Sends the session cookie: signed, hidden from page scripts, and kept for 30 days. */
 export function setSessionCookie(request: FastifyRequest, reply: FastifyReply, token: string): void {
   reply.setCookie(SESSION_COOKIE, token, {
     path: '/',
@@ -198,6 +234,7 @@ export function clearSessionCookie(reply: FastifyReply): void {
   reply.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 
+/** The session token from the request's cookie, if its signature checks out. */
 export function readSessionToken(request: FastifyRequest): string | undefined {
   const raw = request.cookies?.[SESSION_COOKIE];
   if (!raw) return undefined;
@@ -223,6 +260,7 @@ export function currentSetupCode(): string | null {
   return setupCode;
 }
 
+/** Whether a typed setup code matches, forgiving case and spaces. */
 export function checkSetupCode(candidate: unknown): boolean {
   const code = currentSetupCode();
   if (!code || typeof candidate !== 'string') return false;
@@ -241,6 +279,7 @@ const tickets = new Map<string, { userId: number; expires: number; attempts: num
 const TICKET_TTL_MS = 5 * 60 * 1000;
 const TICKET_ATTEMPTS = 5;
 
+/** Hands out a ticket after a correct password, clearing out expired ones first. */
 export function issueTwoFactorTicket(userId: number): string {
   const now = Date.now();
   for (const [key, entry] of tickets) if (entry.expires < now) tickets.delete(key);
@@ -263,6 +302,7 @@ export function useTwoFactorTicket(ticket: unknown): number | null {
   return entry.userId;
 }
 
+/** Retires a ticket once the 2FA code was accepted. */
 export function spendTwoFactorTicket(ticket: string): void {
   tickets.delete(hashToken(ticket));
 }
@@ -293,6 +333,7 @@ class Throttle {
     return 0;
   }
 
+  /** Records a failure; enough of them within the window starts a lockout. */
   fail(key: string): void {
     const now = Date.now();
     // Keep the map from growing without bound under a flood of junk keys.
@@ -314,11 +355,13 @@ class Throttle {
     }
   }
 
+  /** Clears the count after a success. */
   succeed(key: string): void {
     this.attempts.delete(key);
   }
 }
 
+// 10 failures within 15 minutes locks that address or account out for 15 minutes.
 const MINUTE = 60 * 1000;
 export const ipThrottle = new Throttle(10, 15 * MINUTE, 15 * MINUTE);
 export const userThrottle = new Throttle(10, 15 * MINUTE, 15 * MINUTE);

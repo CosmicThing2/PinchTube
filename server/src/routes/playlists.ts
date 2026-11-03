@@ -1,3 +1,18 @@
+/*
+ * routes/playlists.ts — the API for playlists.
+ *
+ *   GET    /api/playlists                    the user's playlists and everyone's shared ones
+ *   POST   /api/playlists                    create one (optionally with a first video)
+ *   GET    /api/playlists/:id                one playlist and its videos
+ *   PATCH  /api/playlists/:id                rename, share, strict, or the viewer's own quality
+ *   DELETE /api/playlists/:id                delete it
+ *   POST   /api/playlists/:id/items          add a video
+ *   DELETE /api/playlists/:id/items/:videoId remove a video
+ *   POST   /api/playlists/:id/order          reorder it
+ * Only the owner may change a playlist, except for the quality, which is
+ * each viewer's own. The database work is in lib/playlists.ts.
+ */
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getVideo } from '../lib/videos.js';
 import {
@@ -18,6 +33,7 @@ import {
 
 const PLAYLISTS_PER_USER_MAX = 500;
 
+/** The :id from the address as a number, or 0 if it is not a valid one. */
 function playlistId(request: FastifyRequest): number {
   const raw = (request.params as any).id;
   const id = Number.parseInt(String(raw), 10);
@@ -33,6 +49,7 @@ function sendPlaylist(request: FastifyRequest, reply: FastifyReply, id: number) 
 }
 
 export function registerPlaylistRoutes(app: FastifyInstance): void {
+  // Every playlist the user can see.
   app.get('/api/playlists', async (request) => {
     const q = (request.query ?? {}) as any;
     const viewer = request.user!;
@@ -43,6 +60,7 @@ export function registerPlaylistRoutes(app: FastifyInstance): void {
     };
   });
 
+  // Create a playlist.
   app.post('/api/playlists', async (request, reply) => {
     const body = (request.body ?? {}) as any;
     const viewer = request.user!;
@@ -62,6 +80,7 @@ export function registerPlaylistRoutes(app: FastifyInstance): void {
 
   app.get('/api/playlists/:id', async (request, reply) => sendPlaylist(request, reply, playlistId(request)));
 
+  // Change a playlist's settings.
   app.patch('/api/playlists/:id', async (request, reply) => {
     const body = (request.body ?? {}) as any;
     const viewer = request.user!;
@@ -90,6 +109,7 @@ export function registerPlaylistRoutes(app: FastifyInstance): void {
     return sendPlaylist(request, reply, id);
   });
 
+  // Delete a playlist.
   app.delete('/api/playlists/:id', async (request, reply) => {
     if (!deletePlaylist(request.user!.id, playlistId(request))) {
       return reply.code(404).send({ error: 'Playlist not found' });
@@ -97,6 +117,7 @@ export function registerPlaylistRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  // Add a video the user may see to one of their playlists.
   app.post('/api/playlists/:id/items', async (request, reply) => {
     const body = (request.body ?? {}) as any;
     const id = playlistId(request);
@@ -108,6 +129,7 @@ export function registerPlaylistRoutes(app: FastifyInstance): void {
     return sendPlaylist(request, reply, id);
   });
 
+  // Remove a video from a playlist.
   app.delete('/api/playlists/:id/items/:videoId', async (request, reply) => {
     const id = playlistId(request);
     const { videoId } = request.params as any;
@@ -117,6 +139,7 @@ export function registerPlaylistRoutes(app: FastifyInstance): void {
     return sendPlaylist(request, reply, id);
   });
 
+  // Reorder a playlist.
   app.post('/api/playlists/:id/order', async (request, reply) => {
     const body = (request.body ?? {}) as any;
     const id = playlistId(request);

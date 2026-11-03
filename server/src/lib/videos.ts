@@ -1,5 +1,26 @@
+/*
+ * videos.ts — reading the library: videos, channels, progress and the queue.
+ *
+ * Almost every database query about the library lives here, so the API
+ * route files (routes/library.ts, routes/queue.ts, routes/stream.ts and
+ * others) stay short. It covers:
+ *   - access control: which channels and videos a user may see. Admins and
+ *     "all channels" users see everything; others only the channels granted
+ *     to them, plus videos lent out by someone's shared, non-strict playlist.
+ *     Every query below goes through channelScope() or videoScope().
+ *   - turning database rows into the objects the web app receives (mapVideo)
+ *   - listing and searching videos, the home page rows, channel lists
+ *   - saving watch progress and the "watched" flag
+ *   - each user's play queue
+ *   - library size statistics for Settings → Library
+ * The tables themselves are defined in db.ts and filled by
+ * library/scanner.ts. Playlists have their own file, lib/playlists.ts.
+ */
+
 import { db } from '../db.js';
 import { settingsFor } from '../settings.js';
+
+// ---- access control ---------------------------------------------------------
 
 /** Who is asking: decides whose watch progress is joined in and which channels show. */
 export interface Viewer {
@@ -18,6 +39,7 @@ export function channelScope(viewer: Viewer, column = 'v.channel_id'): string {
   return `${column} IN (SELECT channel_id FROM user_channels WHERE user_id = @viewerId)`;
 }
 
+/** Whether a viewer may browse a channel. */
 export function canSeeChannel(viewer: Viewer, channelId: string): boolean {
   if (viewer.isAdmin || viewer.allChannels) return true;
   return Boolean(
@@ -62,6 +84,7 @@ export function videoScope(viewer: Viewer): string {
   return `(${channelScope(viewer)} OR v.id IN (${GRANTED_VIDEOS}))`;
 }
 
+/** Whether a viewer may open and play a video. */
 export function canSeeVideo(viewer: Viewer, videoId: string): boolean {
   if (viewer.isAdmin || viewer.allChannels) return true;
   return Boolean(
@@ -79,6 +102,9 @@ export function canSeeChannelArt(viewer: Viewer, channelId: string): boolean {
   );
 }
 
+// ---- turning rows into what the web app receives ----------------------------
+
+/** A subtitle file found next to a video. */
 export interface SubtitleTrack {
   index: number;
   lang: string;
@@ -87,6 +113,7 @@ export interface SubtitleTrack {
   file: string;
 }
 
+/** A row of the videos table, plus the joined channel name and this viewer's progress. */
 export interface VideoRow {
   id: string;
   channel_id: string;
@@ -115,6 +142,7 @@ export interface VideoRow {
   p_watched?: number | null;
 }
 
+/** Readable names for the language codes in subtitle file names. */
 const LANG_NAMES: Record<string, string> = {
   en: 'English',
   'en-gb': 'English (UK)',
@@ -132,6 +160,7 @@ const LANG_NAMES: Record<string, string> = {
   und: 'Subtitles',
 };
 
+/** The subtitle list stored as JSON by the scanner, numbered and labelled. */
 export function parseSubtitles(raw: string | null): SubtitleTrack[] {
   if (!raw) return [];
   let parsed: any;
@@ -153,6 +182,7 @@ export function parseSubtitles(raw: string | null): SubtitleTrack[] {
   });
 }
 
+/** A video as the web app receives it (see VideoDto in web/src/lib/api.ts). */
 export interface VideoDto {
   id: string;
   title: string;
@@ -178,6 +208,7 @@ export interface VideoDto {
   progress: { position: number; watched: boolean };
 }
 
+/** The chapter list stored as JSON by the scanner. */
 function parseChapters(raw: string | null | undefined): VideoDto['chapters'] {
   if (!raw) return [];
   try {
@@ -223,6 +254,9 @@ export function mapVideo(row: VideoRow, viewer?: Viewer): VideoDto {
   };
 }
 
+// ---- listing videos ---------------------------------------------------------
+
+/** The start of every video query: the video, its channel's name and this viewer's progress. */
 const SELECT_BASE = `
   SELECT v.*, c.title AS channel_title,
          p.position AS p_position, p.watched AS p_watched
@@ -233,6 +267,7 @@ const SELECT_BASE = `
 
 export type SortKey = 'date_desc' | 'date_asc' | 'title_asc' | 'title_desc' | 'added_desc' | 'added_asc';
 
+/** The SQL ORDER BY for each sort choice. */
 function orderBy(sort: SortKey): string {
   switch (sort) {
     case 'date_asc':
@@ -251,6 +286,7 @@ function orderBy(sort: SortKey): string {
   }
 }
 
+/** Filters for a video list: channel, search text, sort, watched state and paging. */
 export interface QueryOptions {
   channelId?: string;
   search?: string;
@@ -260,6 +296,7 @@ export interface QueryOptions {
   offset?: number;
 }
 
+/** A page of videos for the browse pages, plus how many match in total. */
 export function queryVideos(viewer: Viewer, options: QueryOptions): { items: VideoDto[]; total: number } {
   const where: string[] = [channelScope(viewer)];
   const params: Record<string, unknown> = { viewerId: viewer.id };
@@ -284,6 +321,7 @@ export function queryVideos(viewer: Viewer, options: QueryOptions): { items: Vid
   const limit = Math.min(200, Math.max(1, options.limit ?? settingsFor(viewer.id).ui.pageSize));
   const offset = Math.max(0, options.offset ?? 0);
 
+  // The total, for "load more", then the page itself.
   const countRow = db
     .prepare(
       `SELECT COUNT(*) AS n FROM videos v
@@ -307,6 +345,9 @@ export function getVideo(viewer: Viewer, id: string): VideoRow | undefined {
     .get({ id, viewerId: viewer.id }) as VideoRow | undefined;
 }
 
+// ---- home page rows ---------------------------------------------------------
+
+/** Videos started but not finished, most recently watched first. */
 export function continueWatching(viewer: Viewer, limit: number): VideoDto[] {
   const settings = settingsFor(viewer.id);
   const rows = db
@@ -328,6 +369,7 @@ export function continueWatching(viewer: Viewer, limit: number): VideoDto[] {
   return rows.map((row) => mapVideo(row, viewer));
 }
 
+/** The newest downloads. */
 export function recentlyAdded(viewer: Viewer, limit: number, hideWatched: boolean): VideoDto[] {
   const rows = db
     .prepare(
@@ -341,6 +383,7 @@ export function recentlyAdded(viewer: Viewer, limit: number, hideWatched: boolea
   return rows.map((row) => mapVideo(row, viewer));
 }
 
+/** A random handful of never-started videos. */
 export function rediscover(viewer: Viewer, limit: number): VideoDto[] {
   // Older, unwatched and untouched — the stuff buried at the bottom of a channel.
   const rows = db
@@ -355,6 +398,9 @@ export function rediscover(viewer: Viewer, limit: number): VideoDto[] {
   return rows.map((row) => mapVideo(row, viewer));
 }
 
+// ---- channels ---------------------------------------------------------------
+
+/** A channel as the web app receives it, with counts for this viewer. */
 export interface ChannelDto {
   id: string;
   title: string;
@@ -367,6 +413,7 @@ export interface ChannelDto {
   hasFanart: boolean;
 }
 
+/** Channels with their video counts, newest upload and this viewer's unwatched count. */
 const CHANNEL_SELECT = `
   SELECT c.id, c.title, c.plot, c.poster, c.banner, c.fanart,
          COUNT(v.id) AS video_count,
@@ -377,6 +424,7 @@ const CHANNEL_SELECT = `
     LEFT JOIN progress p ON p.video_id = v.id AND p.user_id = @viewerId
 `;
 
+/** A channel row into the shape the web app receives. */
 function mapChannel(row: any): ChannelDto {
   return {
     id: row.id,
@@ -391,6 +439,7 @@ function mapChannel(row: any): ChannelDto {
   };
 }
 
+/** The channels a viewer may see, by name or by latest upload. */
 export function listChannels(viewer: Viewer, order: 'name' | 'recent' = 'name'): ChannelDto[] {
   const sql = `${CHANNEL_SELECT} WHERE ${channelScope(viewer, 'c.id')} GROUP BY c.id ORDER BY ${
     order === 'recent' ? 'latest_aired DESC, c.title COLLATE NOCASE ASC' : 'c.title COLLATE NOCASE ASC'
@@ -398,6 +447,7 @@ export function listChannels(viewer: Viewer, order: 'name' | 'recent' = 'name'):
   return (db.prepare(sql).all({ viewerId: viewer.id }) as any[]).map(mapChannel);
 }
 
+/** One channel, if the viewer may see it. */
 export function getChannel(viewer: Viewer, id: string): ChannelDto | undefined {
   const row = db
     .prepare(`${CHANNEL_SELECT} WHERE c.id = @id AND ${channelScope(viewer, 'c.id')} GROUP BY c.id`)
@@ -413,6 +463,7 @@ export function allChannelNames(): { id: string; title: string }[] {
   }[];
 }
 
+/** The file path of a channel's poster, banner or background, if it has one. */
 export function channelArtwork(id: string, kind: 'poster' | 'banner' | 'fanart'): string | null {
   const row = db.prepare(`SELECT ${kind} AS file FROM channels WHERE id = ?`).get(id) as
     | { file: string | null }
@@ -420,6 +471,12 @@ export function channelArtwork(id: string, kind: 'poster' | 'banner' | 'fanart')
   return row?.file ?? null;
 }
 
+// ---- watch progress ---------------------------------------------------------
+
+/**
+ * Stores how far into a video someone is; passing the "watched" threshold
+ * marks it watched, and it stays watched even if they later rewind.
+ */
 export function saveProgress(userId: number, videoId: string, position: number, duration: number): void {
   const settings = settingsFor(userId);
   const watched = duration > 0 && position >= duration * settings.playback.watchedThreshold ? 1 : 0;
@@ -434,6 +491,7 @@ export function saveProgress(userId: number, videoId: string, position: number, 
   ).run({ userId, videoId, position, duration, watched, now: Date.now() });
 }
 
+/** Marks a video watched or unwatched by hand, resetting the position to the start. */
 export function setWatched(userId: number, videoId: string, watched: boolean, duration: number | null): void {
   db.prepare(
     `INSERT INTO progress (user_id, video_id, position, duration, watched, updated_at)
@@ -458,6 +516,7 @@ export function setWatched(userId: number, videoId: string, watched: boolean, du
 // taken away from someone quietly drops out of their lists rather than
 // leaving entries behind that would only fail to play.
 
+/** A user's queue, in order. */
 export function listQueue(viewer: Viewer): VideoDto[] {
   const rows = db
     .prepare(
@@ -469,6 +528,7 @@ export function listQueue(viewer: Viewer): VideoDto[] {
   return rows.map((row) => mapVideo(row, viewer));
 }
 
+/** The most videos a queue may hold. */
 export const QUEUE_MAX = 5000;
 
 /** False when the queue is already full. */
@@ -484,10 +544,12 @@ export function addToQueue(userId: number, videoId: string): boolean {
   return true;
 }
 
+/** Takes one video out of the queue. */
 export function removeFromQueue(userId: number, videoId: string): void {
   db.prepare('DELETE FROM queue WHERE user_id = ? AND video_id = ?').run(userId, videoId);
 }
 
+/** Empties the queue. */
 export function clearQueue(userId: number): void {
   db.prepare('DELETE FROM queue WHERE user_id = ?').run(userId);
 }
@@ -564,6 +626,7 @@ export const CODEC_LABELS: Record<CodecKey, string> = {
   other: 'Other',
 };
 
+/** Groups ffprobe's codec names into the few the size chart shows. */
 function codecKey(raw: string | null): CodecKey {
   const value = (raw ?? '').toLowerCase();
   if (value === 'h264' || value === 'avc' || value === 'avc1') return 'h264';
@@ -573,12 +636,14 @@ function codecKey(raw: string | null): CodecKey {
   return 'other';
 }
 
+/** How much space one codec takes up. */
 export interface SizeSegment {
   codec: CodecKey;
   bytes: number;
   videos: number;
 }
 
+/** How much space one channel takes, split by codec. */
 export interface ChannelSize {
   id: string;
   title: string;
@@ -587,6 +652,7 @@ export interface ChannelSize {
   segments: SizeSegment[];
 }
 
+/** The whole library's size, per channel and per codec. */
 export interface SizeBreakdown {
   totalBytes: number;
   totalVideos: number;
@@ -622,6 +688,7 @@ export function sizeBreakdown(): SizeBreakdown {
   let totalBytes = 0;
   let totalVideos = 0;
 
+  // Add each (channel, codec) group to its channel's total and to the library-wide total.
   for (const row of rows) {
     if (!row.videos) continue;
     const codec = codecKey(row.vcodec);
@@ -656,6 +723,7 @@ export function sizeBreakdown(): SizeBreakdown {
     totalVideos += videos;
   }
 
+  // Biggest channels first, each with its codecs in the fixed order.
   const channelList: ChannelSize[] = Array.from(channels.values())
     .map(({ byCodec, ...channel }) => ({
       ...channel,
@@ -676,6 +744,7 @@ export function sizeBreakdown(): SizeBreakdown {
   };
 }
 
+/** Headline numbers for the library page: videos, channels, watched and total size. */
 export function libraryStats(viewer: Viewer): {
   videos: number;
   channels: number;

@@ -1,3 +1,22 @@
+/*
+ * routes/stream.ts — the API that delivers video, audio and subtitles.
+ *
+ * Two ways to play a video:
+ *   - "Original": GET /api/stream/:id/original sends the file itself,
+ *     supporting byte ranges so the browser can seek and load in pieces.
+ *   - Converted qualities, over HLS:
+ *       GET  /api/stream/:id/master.m3u8              the qualities on offer
+ *       GET  /api/stream/:id/:quality/index.m3u8      that quality's segment list
+ *       GET  /api/stream/:id/:quality/seg-00042.ts    one segment, made on demand
+ *       POST /api/stream/:id/:quality/warm            prepare segments ahead of a sponsor skip
+ *       GET  /api/stream/:id/:quality/status          encoder status for "Stats for nerds"
+ * Plus GET /api/stream/:id/subtitles/:n.vtt, which sends a subtitle file
+ * converted to WebVTT (the only format browsers show).
+ *
+ * Access is checked on every request. Playlists come from media/hls.ts and
+ * segments from media/transcoder.ts; the player is web/src/player/Player.tsx.
+ */
+
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +27,7 @@ import { allowOriginal, findRendition, renditionsFor, shortSide } from '../media
 import { masterPlaylist, segmentCountFor, variantPlaylist } from '../media/hls.js';
 import { encodeStatus, ensureSegment, warmSegments, type TranscodeSource } from '../media/transcoder.js';
 
+/** The type to declare for each video file extension when sending the original. */
 const CONTAINER_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.m4v': 'video/mp4',
@@ -19,6 +39,7 @@ const CONTAINER_TYPES: Record<string, string> = {
   '.flv': 'video/x-flv',
 };
 
+/** Converts an .srt subtitle file to WebVTT; the two formats differ only slightly. */
 function srtToVtt(input: string): string {
   const body = input
     .replace(/^﻿/, '')
@@ -51,6 +72,7 @@ export function registerStreamRoutes(app: FastifyInstance): void {
     reply.header('Content-Type', contentType);
     reply.header('Cache-Control', 'private, max-age=3600');
 
+    // A range request ("bytes=1000-") gets just that part of the file.
     const range = request.headers.range;
     if (range) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
@@ -79,11 +101,13 @@ export function registerStreamRoutes(app: FastifyInstance): void {
       }
     }
 
+    // No range asked for: the whole file.
     reply.header('Content-Length', String(stat.size));
     return reply.send(fs.createReadStream(row.path));
   });
 
   // ---- HLS ----------------------------------------------------------------
+  // The master playlist: which qualities this video can be played at, for this user.
   app.get('/api/stream/:id/master.m3u8', async (request, reply) => {
     const { id } = request.params as any;
     const row = getVideo(request.user!, String(id));
@@ -96,6 +120,7 @@ export function registerStreamRoutes(app: FastifyInstance): void {
     return reply.send(masterPlaylist({ width: row.width, height: row.height }, renditions));
   });
 
+  // One quality's playlist, listing every segment of the video.
   app.get('/api/stream/:id/:rendition/index.m3u8', async (request, reply) => {
     const { id, rendition } = request.params as any;
     const row = getVideo(request.user!, String(id));
@@ -108,6 +133,7 @@ export function registerStreamRoutes(app: FastifyInstance): void {
     return reply.send(variantPlaylist(row.duration, getSettings().transcode.segmentSeconds));
   });
 
+  // One segment. Waits while the transcoder makes it if it is not ready yet.
   app.get('/api/stream/:id/:rendition/:segment', async (request, reply) => {
     const { id, rendition, segment } = request.params as any;
     const match = /^seg-(\d{5})\.ts$/.exec(String(segment));
