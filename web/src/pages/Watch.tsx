@@ -34,6 +34,9 @@ import {
   type OfflineVideo,
 } from '../lib/offline';
 import { usePlaylistPlayback } from '../lib/playlist-playback';
+
+/** How long to wait for browser storage to say whether a video is cached before streaming it. */
+const OFFLINE_CHECK_MS = 3000;
 import { EmptyState, Spinner } from '../components/Common';
 import { useApp } from '../lib/app-context';
 import { useQueue } from '../lib/queue-context';
@@ -101,7 +104,15 @@ export function Watch() {
       setDevice(undefined);
     }
     void (async () => {
-      const meta = userId === null ? null : await getOffline(userId, id).catch(() => null);
+      // Never hold the player back for long over browser storage: if it does
+      // not answer quickly, stream instead.
+      const meta =
+        userId === null
+          ? null
+          : await Promise.race([
+              getOffline(userId, id),
+              new Promise<null>((resolve) => window.setTimeout(() => resolve(null), OFFLINE_CHECK_MS)),
+            ]).catch(() => null);
       if (cancelled) return;
       // Something else was stored or removed, but not this video's copy: keep
       // the address the player already has.
@@ -401,7 +412,13 @@ export function Watch() {
         {/* This wrapper always exists: swapping it in and out would remount the
             player and restart the video. */}
         <div className={theater ? 'theater-stage' : undefined}>
-          {device === undefined ? <div className="player" aria-hidden="true" /> : player}
+          {device === undefined ? (
+            <div className="player" aria-hidden="true" style={{ display: 'grid', placeItems: 'center' }}>
+              <Spinner />
+            </div>
+          ) : (
+            player
+          )}
         </div>
 
         <h1 className="watch-title">{video.title}</h1>

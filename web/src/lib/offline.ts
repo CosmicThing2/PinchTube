@@ -109,7 +109,19 @@ function openDb(): Promise<IDBDatabase> {
       if (!has('pieces')) db.createObjectStore('pieces', { keyPath: ['key', 'index'] });
       if (!has('files')) db.createObjectStore('files', { keyPath: 'key' });
     };
-    request.onsuccess = () => resolve(request.result);
+    // Another tab still running an older version of the app holds the
+    // database open, so the upgrade has to wait for it. Fail now rather than
+    // leave pages waiting; it is retried on the next call.
+    request.onblocked = () => reject(new Error('Close any other PinchTube tabs to use downloads'));
+    request.onsuccess = () => {
+      const db = request.result;
+      // And the other way round: let a newer version in another tab upgrade.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error ?? new Error('Could not open storage'));
   });
   dbPromise.catch(() => {
