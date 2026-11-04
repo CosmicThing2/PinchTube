@@ -214,8 +214,9 @@ function TaskList() {
             ) : (
               <>
                 <div className="hint">
-                  {task.phase === 'preparing' ? 'Preparing on the server' : 'Downloading'} ·{' '}
-                  {Math.round(task.progress * 100)}%
+                  {task.phase === 'saving'
+                    ? 'Saving to the browser cache'
+                    : `${task.phase === 'preparing' ? 'Preparing on the server' : 'Downloading'} · ${Math.round(task.progress * 100)}%`}
                 </div>
                 <div className="download-bar">
                   <span style={{ width: `${Math.round(task.progress * 100)}%` }} />

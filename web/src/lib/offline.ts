@@ -4,9 +4,11 @@
  * A web page cannot save a file somewhere and read it back later, but it can
  * keep data in the browser's own storage for the site (IndexedDB). "Save to
  * browser cache" downloads a video into that storage in pieces of a few MB,
- * so a big video never has to sit in memory all at once; the watch page then
- * plays it from there instead of streaming (see offlineSource()). "Save to
- * device" just hands the browser a normal download instead.
+ * so a big video never has to sit in memory all at once, then joins the
+ * pieces into one stored file; the watch page plays it from there instead of
+ * streaming (see offlineSource()). The joining matters: Firefox cannot jump
+ * around in a video made of several stored pieces, only within what it has
+ * read so far. "Save to device" just hands the browser a normal download.
  *
  * For any quality other than Original, the server first converts the whole
  * video (server/src/routes/downloads.ts); the progress of that "preparing"
@@ -25,7 +27,7 @@ import { api, urls, type DownloadStatus } from './api';
 
 // ---- what is stored ---------------------------------------------------------
 
-/** One video in the browser cache. Its bytes are stored separately, as pieces. */
+/** One video in the browser cache. Its bytes are stored separately, in 'files'. */
 export interface OfflineVideo {
   /** "<user id>:<video id>". */
   key: string;
@@ -42,7 +44,13 @@ export interface OfflineVideo {
   qualityLabel: string;
   mime: string;
   size: number;
+  /** How many pieces it was downloaded in. */
   pieces: number;
+  /**
+   * Joined into one file in 'files'. Copies saved before joining was added
+   * are still pieces until they are first played (see offlineSource()).
+   */
+  whole?: boolean;
   savedAt: number;
 }
 
@@ -51,7 +59,8 @@ export interface DownloadTask {
   videoId: string;
   title: string;
   mode: 'device' | 'file';
-  phase: 'preparing' | 'downloading' | 'failed';
+  /** 'saving' is joining the downloaded pieces into one stored file. */
+  phase: 'preparing' | 'downloading' | 'saving' | 'failed';
   /** 0 to 1 within the current phase. */
   progress: number;
   error: string | null;
@@ -82,18 +91,23 @@ const keyOf = (userId: number, videoId: string) => `${userId}:${videoId}`;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
-/** Opens (and on first use creates) the database: video details, and their pieces. */
+/**
+ * Opens (and on first use creates) the database: video details, the pieces
+ * a download arrives in, and the finished files. Version 2 added 'files'.
+ */
 function openDb(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
       reject(new Error('This browser cannot store videos'));
       return;
     }
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(DB_NAME, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
-      db.createObjectStore('videos', { keyPath: 'key' });
-      db.createObjectStore('pieces', { keyPath: ['key', 'index'] });
+      const has = (name: string) => db.objectStoreNames.contains(name);
+      if (!has('videos')) db.createObjectStore('videos', { keyPath: 'key' });
+      if (!has('pieces')) db.createObjectStore('pieces', { keyPath: ['key', 'index'] });
+      if (!has('files')) db.createObjectStore('files', { keyPath: 'key' });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('Could not open storage'));
@@ -137,12 +151,13 @@ export async function getOffline(userId: number, videoId: string): Promise<Offli
   return found ?? null;
 }
 
-/** Deletes a downloaded video and its pieces. */
+/** Deletes a downloaded video, its file and any pieces. */
 export async function removeOffline(userId: number, videoId: string): Promise<void> {
   const key = keyOf(userId, videoId);
-  await run(['videos', 'pieces'], 'readwrite', (tx) => {
+  await run(['videos', 'pieces', 'files'], 'readwrite', (tx) => {
     tx.objectStore('videos').delete(key);
     tx.objectStore('pieces').delete(piecesOf(key));
+    tx.objectStore('files').delete(key);
   });
   changed();
 }
@@ -151,10 +166,11 @@ export async function removeOffline(userId: number, videoId: string): Promise<vo
 export async function removeAllOffline(userId: number): Promise<void> {
   const keys = (await listOffline(userId)).map((video) => video.key);
   if (!keys.length) return;
-  await run(['videos', 'pieces'], 'readwrite', (tx) => {
+  await run(['videos', 'pieces', 'files'], 'readwrite', (tx) => {
     for (const key of keys) {
       tx.objectStore('videos').delete(key);
       tx.objectStore('pieces').delete(piecesOf(key));
+      tx.objectStore('files').delete(key);
     }
   });
   changed();
@@ -224,10 +240,70 @@ export async function completeDetails(videos: OfflineVideo[]): Promise<OfflineVi
   return videos.map((video) => filled.get(video.key) ?? video);
 }
 
+/** A video's downloaded pieces joined back together in order, or null if any are missing. */
+async function joinPieces(key: string, count: number, mime: string): Promise<Blob | null> {
+  const pieces =
+    (await run<{ index: number; blob: Blob }[]>(['pieces'], 'readonly', (tx) =>
+      tx.objectStore('pieces').getAll(piecesOf(key)),
+    )) ?? [];
+  if (pieces.length !== count) return null;
+  pieces.sort((a, b) => a.index - b.index);
+  return new Blob(
+    pieces.map((piece) => piece.blob),
+    { type: mime },
+  );
+}
+
 /**
- * A playable address for a downloaded video, made by joining its pieces back
- * into one file (the browser keeps the pieces on disk, so this is cheap).
- * The caller must URL.revokeObjectURL() it when done.
+ * Stores a video as one file and records it, then drops its pieces. The
+ * browser copies the joined pieces into a single file on disk, which it can
+ * then read from any point.
+ */
+async function storeWhole(video: OfflineVideo, blob: Blob): Promise<void> {
+  await run(['files', 'videos'], 'readwrite', (tx) => {
+    tx.objectStore('files').put({ key: video.key, blob });
+    tx.objectStore('videos').put({ ...video, whole: true });
+  });
+  await run(['pieces'], 'readwrite', (tx) => {
+    tx.objectStore('pieces').delete(piecesOf(video.key));
+  });
+}
+
+/** A video's stored file. */
+async function wholeFile(key: string): Promise<Blob | null> {
+  const found = await run<{ key: string; blob: Blob }>(['files'], 'readonly', (tx) => tx.objectStore('files').get(key));
+  return found?.blob ?? null;
+}
+
+/** Copies being joined into one file right now, so two callers share the work. */
+const joining = new Map<string, Promise<Blob | null>>();
+
+/**
+ * Joins a copy saved before pieces were joined at download time into one
+ * file, once. If there is no room to store it joined, the pieces are played
+ * as they are, which works everywhere except for jumping ahead in Firefox.
+ */
+function joinOldCopy(video: OfflineVideo): Promise<Blob | null> {
+  let work = joining.get(video.key);
+  if (!work) {
+    work = (async () => {
+      const joined = await joinPieces(video.key, video.pieces, video.mime);
+      if (!joined) return null;
+      try {
+        await storeWhole(video, joined);
+        return await wholeFile(video.key);
+      } catch {
+        return joined;
+      }
+    })().finally(() => joining.delete(video.key));
+    joining.set(video.key, work);
+  }
+  return work;
+}
+
+/**
+ * A playable address for a downloaded video, from its stored file. The
+ * caller must URL.revokeObjectURL() it when done.
  */
 export async function offlineSource(
   userId: number,
@@ -235,17 +311,8 @@ export async function offlineSource(
 ): Promise<{ url: string; label: string } | null> {
   const video = await getOffline(userId, videoId).catch(() => null);
   if (!video) return null;
-  const key = video.key;
-  const pieces =
-    (await run<{ index: number; blob: Blob }[]>(['pieces'], 'readonly', (tx) =>
-      tx.objectStore('pieces').getAll(piecesOf(key)),
-    )) ?? [];
-  if (pieces.length !== video.pieces) return null;
-  pieces.sort((a, b) => a.index - b.index);
-  const file = new Blob(
-    pieces.map((piece) => piece.blob),
-    { type: video.mime },
-  );
+  const file = video.whole ? await wholeFile(video.key) : await joinOldCopy(video);
+  if (!file) return null;
   return { url: URL.createObjectURL(file), label: video.qualityLabel };
 }
 
@@ -374,6 +441,19 @@ async function store(request: DownloadRequest, url: string, signal: AbortSignal)
     }
     await flush();
 
+    // Join the pieces into one stored file (this copies the whole video, so
+    // a big one takes a little while).
+    setTask(request.videoId, {
+      videoId: request.videoId,
+      title: request.title,
+      mode: 'device',
+      phase: 'saving',
+      progress: 1,
+      error: null,
+    });
+    const joined = await joinPieces(key, index, mime);
+    if (!joined) throw new Error('The download could not be saved');
+
     const video: OfflineVideo = {
       key,
       userId: request.userId,
@@ -389,9 +469,7 @@ async function store(request: DownloadRequest, url: string, signal: AbortSignal)
       pieces: index,
       savedAt: Date.now(),
     };
-    await run(['videos'], 'readwrite', (tx) => {
-      tx.objectStore('videos').put(video);
-    });
+    await storeWhole(video, joined);
     changed();
   } catch (err) {
     // Leave nothing half-saved behind.

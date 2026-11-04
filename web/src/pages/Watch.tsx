@@ -470,7 +470,9 @@ export function Watch() {
             >
               {saved ? <IconCheck /> : <IconDownload />}
               {downloadTask && downloadTask.phase !== 'failed'
-                ? `${downloadTask.phase === 'preparing' ? 'Preparing' : 'Downloading'} ${Math.round(downloadTask.progress * 100)}%`
+                ? downloadTask.phase === 'saving'
+                  ? 'Saving…'
+                  : `${downloadTask.phase === 'preparing' ? 'Preparing' : 'Downloading'} ${Math.round(downloadTask.progress * 100)}%`
                 : saved
                   ? 'Downloaded'
                   : 'Download'}
