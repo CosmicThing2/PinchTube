@@ -6,7 +6,8 @@
  * Access is checked first (you only get artwork for what you may see). The
  * image is shrunk to roughly the requested width (media/images.ts); a video
  * with no thumbnail gets a frame taken from it (media/poster.ts), and failing
- * that its channel's poster. Responses can be cached by the browser for a week.
+ * that its channel's poster. Browsers may cache thumbnails for a week, and
+ * channel art for five minutes since an administrator can replace it.
  */
 
 import fs from 'node:fs';
@@ -23,6 +24,7 @@ async function sendImage(
   reply: FastifyReply,
   source: string | null,
   widthRaw: unknown,
+  cacheSeconds = 604800,
 ): Promise<FastifyReply> {
   if (!source) return reply.code(404).send({ error: 'No artwork' });
 
@@ -48,7 +50,7 @@ async function sendImage(
 
   reply.header('Content-Type', served.contentType || contentTypeFor(served.file));
   reply.header('Content-Length', String(stat.size));
-  reply.header('Cache-Control', 'private, max-age=604800');
+  reply.header('Cache-Control', `private, max-age=${cacheSeconds}`);
   reply.header('ETag', etag);
   return reply.send(fs.createReadStream(served.file));
 }
@@ -90,6 +92,6 @@ export function registerImageRoutes(app: FastifyInstance): void {
     }
     if (!canSeeChannelArt(request.user!, String(id))) return reply.code(404).send({ error: 'No artwork' });
     const source = channelArtwork(String(id), kind);
-    return sendImage(request, reply, source, (request.query as any)?.w);
+    return sendImage(request, reply, source, (request.query as any)?.w, 300);
   });
 }

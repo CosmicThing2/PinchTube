@@ -32,7 +32,9 @@ It runs as a single Docker container. It is designed for a private network — s
   users. The queue collects videos to play one after another.
 - **Downloads for later.** Save a video to the browser cache, where PinchTube plays it
   without streaming, or save it to your device as an ordinary file — at the original
-  quality, a smaller one, or audio only.
+  quality, a smaller one, or audio only. **Download all** does the whole queue at once.
+- **Channels your way.** Administrators can change a channel's name, description, icon,
+  banner and fanart without touching the files in the media folder.
 - **Works properly on a phone.** Bottom tab bar, touch scrubbing, double-tap to skip,
   fullscreen swipe gestures, a data saver mode, installable to the home screen.
 - **Bends to how you like it.** Theater mode, chapters, SponsorBlock segments (skipped
@@ -243,6 +245,23 @@ menu (newest, oldest, recently downloaded, title A–Z or Z–A). **Delete all**
 one, after you type "delete all" to confirm. Turn on **Organise downloads by channel** under
 Settings → Interface to see a grid of channels instead, each opening its own sortable list.
 
+A video in the browser cache shows a small download icon in the corner of its thumbnail
+everywhere in the app. Like the copies themselves, this is per browser: your phone only marks
+what is saved on your phone.
+
+**Download all**, on the Queue page, saves every video in the queue to the browser cache. It
+starts on the quality set for the queue (or Original, if that is Auto), and tells you how many
+videos it will download and roughly how much space they need before you confirm. If a video
+cannot offer the chosen quality, the nearest one is used, and videos already saved are skipped.
+They download one at a time in the background, and the Downloads page shows their progress with
+**Cancel** and **Cancel all**. Keep PinchTube open until they finish; if you close it, press
+**Download all** again to pick up the rest. Running out of space stops the rest of the list.
+
+**Delete downloads once watched**, under Settings → Interface (off by default), removes a video
+from the browser cache after it is marked as watched, as soon as you leave its page. Anything
+watched before you turned the setting on, or before it was downloaded, is kept, so you can still
+download something you have already seen.
+
 Things to know about the browser cache:
 
 - It belongs to **one account in one browser**. Videos saved on your phone do not show on
@@ -254,9 +273,34 @@ Things to know about the browser cache:
   later, not as an archive — use **Save to device** for anything you want to keep.
 
 On the server, converted copies are kept in `cache/downloads` for a day after they are made,
-so another device or a retry does not convert again, and are then deleted. One conversion
-runs at a time with up to 20 waiting. **Clear transcode cache** under Settings → Transcoding
-empties them too.
+so another device or a retry does not convert again, and are then deleted. **Download all**
+deletes each one as soon as the browser has saved it, so a long queue does not fill the disk.
+One conversion runs at a time with up to 20 waiting. **Clear transcode cache** under
+Settings → Transcoding empties them too.
+
+
+## Editing channels
+
+Administrators get an **Edit** button on each channel's page. It changes:
+
+- **The name and description.**
+- **The channel icon** — upload a picture, or pick from 20 ready-made black and white icons.
+- **The banner and fanart** — upload a picture. The fanart is used across the top of the page
+  when a channel has no banner.
+
+Pictures can be JPEG, PNG or WebP, up to 15 MB. They are converted to JPEG when uploaded. Each
+edit has a **Reset** that goes back to what is in the channel's folder. Edits apply for every
+user, and other users do not see the button.
+
+Edits are stored in PinchTube's own config folder (the database, and `config/channel-art`), not
+in the media folder, which stays read-only. That means:
+
+- **Pinchflat cannot overwrite them.** It rewrites `poster.jpg`, `banner.jpg`, `fanart.jpg` and
+  `tvshow.nfo` when it refreshes a source's metadata, and PinchTube's edits simply stay on top.
+- **Pinchflat is not affected.** It keeps its own name for each source, and the folder is not
+  renamed.
+- **Other apps do not see them.** Pinchflat, Jellyfin and Kodi keep showing the original name
+  and artwork.
 
 
 ## Transcoding
@@ -279,7 +323,7 @@ so rewatching costs nothing.
 If the browser cannot decode the original file — a VP9 or AV1 download on Safari, for
 example — the player notices the media error and switches itself to Auto.
 
-**Stats for nerds**, under the gear in the player, shows what is happening while a video
+**Stats for nerds**, in the player's gear menu, shows what is happening while a video
 plays: how far ahead it has loaded, the loading speed, stalls, dropped frames, and whether
 the server is encoding on the GPU or the CPU and how fast. It is the first place to look
 when a video keeps buffering.
@@ -447,6 +491,7 @@ server/src
   lib/videos.ts         library queries, channel access, queue
   lib/playlists.ts      playlists
   lib/send-file.ts      sending large files in byte ranges, and as downloads
+  lib/channel-edits.ts  administrators' changes to channels
 
 web/src
   main.tsx              routing
@@ -506,7 +551,11 @@ user under Settings → Users.
 
 **Downloaded videos have disappeared** — they live in the browser, so clearing its data for
 PinchTube, using a different browser or account, or the browser freeing space removes or
-hides them. See [Downloads](#downloads).
+hides them. If **Delete downloads once watched** is on, watched videos are removed too. See
+[Downloads](#downloads).
+
+**"Close any other PinchTube tabs to use downloads"** — an old tab is still running an earlier
+version and holds the browser's storage open. Close it, and videos stream normally meanwhile.
 
 **"Too many downloads are being prepared"** — the server converts one video at a time with
 up to 20 waiting. Wait for some to finish, or download at **Original**, which needs no

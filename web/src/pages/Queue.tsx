@@ -3,11 +3,13 @@
  *
  * Lists the queue with buttons to move videos up and down or remove them,
  * plus "Play all", "Add videos" (turns on queue mode and goes to the home
- * page so videos can be tapped to add), "Clear queue", and the quality every
+ * page so videos can be tapped to add), "Download all"
+ * (components/QueueDownloadDialog.tsx), "Clear queue", and the quality every
  * queued video plays at. The queue itself lives in lib/queue-context.tsx;
  * playing it happens on the watch page (/watch/:id?queue=1).
  */
 
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueue } from '../lib/queue-context';
 import { useApp } from '../lib/app-context';
@@ -15,7 +17,9 @@ import { EmptyState, Select } from '../components/Common';
 import { Thumb } from '../components/VideoCard';
 import { formatCount, formatRelative } from '../lib/format';
 import { LibrarySwitch } from '../components/LibrarySwitch';
-import { IconChevronDown, IconChevronUp, IconClose, IconPlay } from '../components/Icons';
+import { QueueDownloadDialog } from '../components/QueueDownloadDialog';
+import { useDownloadTasks } from '../lib/offline';
+import { IconChevronDown, IconChevronUp, IconClose, IconDownload, IconPlay } from '../components/Icons';
 
 /** The choices for the queue's quality. */
 const QUEUE_QUALITY_OPTIONS = [
@@ -32,8 +36,10 @@ const QUEUE_QUALITY_OPTIONS = [
 
 export function Queue() {
   const { items, playOrder, remove, clear, move, queueMode, setQueueMode } = useQueue();
-  const { settings, saveSettings } = useApp();
+  const { settings, saveSettings, user } = useApp();
   const navigate = useNavigate();
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const running = useDownloadTasks().filter((task) => task.phase !== 'failed').length;
 
   const quality = settings?.playback.queueQuality ?? 'auto';
 
@@ -68,6 +74,13 @@ export function Queue() {
           {queueMode ? 'Done adding' : 'Add videos'}
         </button>
 
+        <button className="chip" disabled={items.length === 0} onClick={() => setDownloadOpen(true)}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <IconDownload style={{ width: 14, height: 14, fill: 'currentColor' }} />
+            Download all
+          </span>
+        </button>
+
         <button className="chip" disabled={items.length === 0} onClick={() => void clear()}>
           Clear queue
         </button>
@@ -76,6 +89,22 @@ export function Queue() {
           {formatCount(items.length, 'video')}
         </span>
       </div>
+
+      {/* Downloads carry on in the background; this is the way to see them */}
+      {running > 0 ? (
+        <p className="muted" style={{ margin: '-6px 0 14px', fontSize: 13 }}>
+          {formatCount(running, 'download')} in progress. <Link to="/downloads">See progress</Link>
+        </p>
+      ) : null}
+
+      {downloadOpen && user ? (
+        <QueueDownloadDialog
+          videos={items}
+          userId={user.id}
+          defaultQuality={quality}
+          onClose={() => setDownloadOpen(false)}
+        />
+      ) : null}
 
       {/* The queue's quality, saved as a personal setting */}
       <div className="panel">

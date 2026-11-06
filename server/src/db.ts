@@ -27,14 +27,29 @@ db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
 
 /**
- * The current table layout. Every public release so far has used 6.
+ * The current table layout. Releases up to 7 November 2026 used 6.
  *
  * To change the layout later: update the tables below (so new databases get
  * the new layout straight away), add a step to migrate() that upgrades an
  * existing database, e.g. `if (current < 7) { ...ALTER TABLE... }`, and raise
  * this number.
  */
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
+
+/**
+ * An administrator's changes to a channel (lib/channel-edits.ts). Not tied to
+ * the channels table, so edits survive the folder briefly going missing.
+ */
+const CHANNEL_EDITS_TABLE = `
+    CREATE TABLE IF NOT EXISTS channel_edits (
+      channel_id  TEXT PRIMARY KEY,
+      -- Null means "use what is in the channel's folder".
+      title       TEXT,
+      plot        TEXT,
+      -- Changes whenever an uploaded image does, so browsers fetch the new one.
+      art_version INTEGER NOT NULL DEFAULT 0
+    );
+`;
 
 /** Every table and index, as a brand-new database gets them. */
 const SCHEMA = `
@@ -133,6 +148,8 @@ const SCHEMA = `
       duration   REAL NOT NULL DEFAULT 0,
       watched    INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL,
+      -- When it was last marked watched (ms); null if unknown or not watched.
+      watched_at INTEGER,
       PRIMARY KEY (user_id, video_id)
     );
 
@@ -181,6 +198,8 @@ const SCHEMA = `
       last_seen INTEGER NOT NULL
     );
 
+${CHANNEL_EDITS_TABLE}
+
     CREATE INDEX IF NOT EXISTS idx_progress_user_updated ON progress(user_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_queue_user_position ON queue(user_id, position);
     CREATE INDEX IF NOT EXISTS idx_playlist_items_position ON playlist_items(playlist_id, position);
@@ -194,6 +213,16 @@ export function migrate(): void {
   if (current === 0) {
     db.transaction(() => {
       db.exec(SCHEMA);
+      db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    })();
+    return;
+  }
+
+  // Layout 7 added channel edits and when each video was marked watched.
+  if (current === 6) {
+    db.transaction(() => {
+      db.exec('ALTER TABLE progress ADD COLUMN watched_at INTEGER');
+      db.exec(CHANNEL_EDITS_TABLE);
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     })();
     return;

@@ -5,16 +5,19 @@
  *   Channels  every channel the user may see, A–Z or by latest upload, as a
  *             grid or list (the "Channel layout" setting)
  *   Channel   one channel: banner, avatar, name, counts and description,
- *             then its videos (components/VideoBrowser.tsx)
+ *             then its videos (components/VideoBrowser.tsx); administrators
+ *             also get an Edit button (components/ChannelEditDialog.tsx)
  * Data comes from /api/channels (server/src/routes/library.ts).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, urls, type ChannelDto } from '../lib/api';
 import { ChannelCard, EmptyState, Spinner } from '../components/Common';
 import { useApp } from '../lib/app-context';
 import { VideoBrowser } from '../components/VideoBrowser';
+import { ChannelEditDialog } from '../components/ChannelEditDialog';
+import { IconEdit } from '../components/Icons';
 import { formatCount, formatRelative } from '../lib/format';
 
 /** Every channel, as cards. */
@@ -78,12 +81,48 @@ export function Channels() {
   );
 }
 
+/** A channel's description, cut to three lines with "Show more" if there is more to show. */
+function ChannelPlot({ text }: { text: string }) {
+  const body = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  // Measured rather than guessed from its length, and again if the page resizes.
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (!element || expanded) return;
+    const measure = () => setOverflows(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text, expanded]);
+
+  return (
+    <>
+      <div ref={body} className={expanded ? 'channel-plot' : 'channel-plot clamp-3'}>
+        {text}
+      </div>
+      {overflows ? (
+        <button
+          className="muted"
+          style={{ fontSize: 13, fontWeight: 650, marginTop: 6 }}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 /** One channel's page. */
 export function Channel() {
   const { id = '' } = useParams();
+  const { user } = useApp();
   const [channel, setChannel] = useState<ChannelDto | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   // Load the channel's details when the address changes.
   useEffect(() => {
@@ -112,7 +151,7 @@ export function Channel() {
         {channel.hasBanner || channel.hasFanart ? (
           <img
             className="channel-hero-banner"
-            src={urls.channelArt(channel.id, channel.hasBanner ? 'banner' : 'fanart', 1280)}
+            src={urls.channelArt(channel.id, channel.hasBanner ? 'banner' : 'fanart', 1280, channel.artVersion)}
             alt=""
             onError={(event) => {
               (event.currentTarget as HTMLImageElement).style.display = 'none';
@@ -123,36 +162,39 @@ export function Channel() {
         <div className="channel-hero-body">
           <img
             className="avatar-lg"
-            src={urls.channelArt(channel.id, 'poster', 240)}
+            src={urls.channelArt(channel.id, 'poster', 240, channel.artVersion)}
             alt=""
             onError={(event) => {
               (event.currentTarget as HTMLImageElement).style.visibility = 'hidden';
             }}
           />
-          <div style={{ minWidth: 0 }}>
+          <div className="grow" style={{ minWidth: 0 }}>
             <h1>{channel.title}</h1>
             <div className="sub">
               {formatCount(channel.videoCount, 'video')}
               {channel.unwatchedCount > 0 ? ` · ${channel.unwatchedCount} unwatched` : ''}
               {channel.latestAired ? ` · latest ${formatRelative(channel.latestAired)}` : ''}
             </div>
-            {channel.plot ? (
-              <>
-                <div className={expanded ? '' : 'clamp-3'} style={{ whiteSpace: 'pre-wrap' }}>
-                  {channel.plot}
-                </div>
-                <button
-                  className="muted"
-                  style={{ fontSize: 13, fontWeight: 650, marginTop: 6 }}
-                  onClick={() => setExpanded((value) => !value)}
-                >
-                  {expanded ? 'Show less' : 'Show more'}
-                </button>
-              </>
-            ) : null}
+            {channel.plot ? <ChannelPlot text={channel.plot} /> : null}
           </div>
+          {user?.isAdmin ? (
+            <button
+              className="btn"
+              style={{ flexShrink: 0 }}
+              onClick={() => setEditing(true)}
+              aria-label="Edit channel"
+              title="Edit channel"
+            >
+              <IconEdit />
+              <span className="hide-sm">Edit</span>
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {editing ? (
+        <ChannelEditDialog channel={channel} onChanged={setChannel} onClose={() => setEditing(false)} />
+      ) : null}
 
       {/* The channel's videos */}
       <VideoBrowser

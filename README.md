@@ -111,7 +111,10 @@ Thank you!
 - **Playlists and play queue** - drag to reorder, loop, shuffle, per-person quality, and
   optional sharing with the other users.
 - **Downloads** - save videos to the browser cache to watch later without streaming, or to
-  your device as a normal file, at any quality or audio only.
+  your device as a normal file, at any quality or audio only. Download a whole queue at once,
+  with an optional clean-up once you have watched them.
+- **Editable channels** - administrators can change a channel's name, description, icon,
+  banner and fanart, without touching your media folder.
 - **Multiple users** - everyone gets their own watch history, queue, playlists and settings;
   administrators choose which channels each person can see.
 - **Built for phones** - bottom tab bar, touch gestures, a data saver mode with its own

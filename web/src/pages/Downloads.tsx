@@ -21,18 +21,21 @@ import { useApp } from '../lib/app-context';
 import { formatBytes, formatCount, formatRelative } from '../lib/format';
 import {
   OFFLINE_SORTS,
+  cancelAllDownloads,
   cancelDownload,
   completeDetails,
   listOffline,
   removeAllOffline,
   removeOffline,
   sortOffline,
+  taskLabel,
   useDownloadTasks,
   useOfflineVersion,
   type OfflineVideo,
 } from '../lib/offline';
 import { ChannelCard, Dialog, EmptyState, Select, Spinner } from '../components/Common';
 import { LibrarySwitch } from '../components/LibrarySwitch';
+import { DownloadedBadge } from '../components/VideoCard';
 import { IconClose, IconTrash } from '../components/Icons';
 
 /** The sort used until another is picked: the order things were downloaded in. */
@@ -202,7 +205,14 @@ function TaskList() {
   if (!tasks.length) return null;
   return (
     <div className="panel">
-      <h2>In progress</h2>
+      <div className="toolbar" style={{ marginBottom: 0 }}>
+        <h2 style={{ margin: 0 }}>In progress</h2>
+        {tasks.length > 1 ? (
+          <button className="btn" style={{ marginLeft: 'auto' }} onClick={cancelAllDownloads}>
+            Cancel all
+          </button>
+        ) : null}
+      </div>
       {tasks.map((task) => (
         <div key={task.videoId} className="download-task">
           <div className="grow" style={{ minWidth: 0 }}>
@@ -213,11 +223,7 @@ function TaskList() {
               <div className="hint">{task.error}</div>
             ) : (
               <>
-                <div className="hint">
-                  {task.phase === 'saving'
-                    ? 'Saving to the browser cache'
-                    : `${task.phase === 'preparing' ? 'Preparing on the server' : 'Downloading'} · ${Math.round(task.progress * 100)}%`}
-                </div>
+                <div className="hint">{taskLabel(task)}</div>
                 <div className="download-bar">
                   <span style={{ width: `${Math.round(task.progress * 100)}%` }} />
                 </div>
@@ -269,6 +275,7 @@ function VideoList({ items }: { items: OfflineVideo[] }) {
           <Link to={`/watch/${video.videoId}`} className="queue-thumb">
             <div className="thumb">
               <img src={urls.videoThumb(video.videoId, 320)} alt="" loading="lazy" />
+              <DownloadedBadge />
             </div>
           </Link>
           <div className="card-text">

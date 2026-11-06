@@ -8,6 +8,7 @@
  *                                   the qualities on offer, playback settings, "up next"
  *   POST /api/videos/:id/progress   save how far into a video the user is
  *   POST /api/videos/:id/watched    mark a video watched / unwatched
+ *   POST /api/videos/watched-times  when the given videos were marked watched
  *   GET  /api/channels              the channels the user may see
  *   GET  /api/channels/:id          one channel
  *   GET  /api/stats                 library counts
@@ -29,6 +30,7 @@ import {
   recentlyAdded,
   rediscover,
   saveProgress,
+  watchedTimes,
   setWatched,
   sizeBreakdown,
   type SortKey,
@@ -246,6 +248,21 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     const duration = Math.max(0, finite(body.duration) || row.duration || 0);
     saveProgress(request.user!.id, row.id, position, duration);
     return { ok: true };
+  });
+
+  // Tells the web app which of its downloads have been watched since it saved
+  // them, for the "delete downloads once watched" setting (web/src/lib/offline.ts).
+  app.post('/api/videos/watched-times', async (request) => {
+    const ids = (request.body as any)?.ids;
+    const times = watchedTimes(request.user!.id);
+    const items: Record<string, number> = {};
+    if (Array.isArray(ids)) {
+      for (const id of ids) {
+        const time = typeof id === 'string' ? times.get(id) : undefined;
+        if (time !== undefined) items[id] = time;
+      }
+    }
+    return { items };
   });
 
   // The "Mark as watched / unwatched" menu items.

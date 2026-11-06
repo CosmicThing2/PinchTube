@@ -30,6 +30,40 @@ function loadSharp(): any {
   return sharpModule;
 }
 
+/** An uploaded file that cannot be used; the message is safe to show. */
+export class BadImageError extends Error {}
+
+/** The most pixels an uploaded image may have, so a tiny file cannot unpack into a huge one. */
+const MAX_UPLOAD_PIXELS = 100_000_000;
+
+/**
+ * Decodes an uploaded channel image and writes it to `target` as a new JPEG no
+ * longer than `maxSide`. Re-encoding means only what the image library drew
+ * gets stored: no embedded metadata, and nothing but a plain picture.
+ */
+export async function saveChannelImage(input: Buffer, target: string, maxSide: number): Promise<void> {
+  const sharp = loadSharp();
+  if (!sharp) throw new BadImageError('Image processing is not available on this server');
+
+  const tmp = `${target}.${process.pid}.tmp`;
+  try {
+    const image = sharp(input, { limitInputPixels: MAX_UPLOAD_PIXELS });
+    const { format } = await image.metadata();
+    if (!['jpeg', 'png', 'webp'].includes(format)) throw new BadImageError('Use a JPEG, PNG or WebP image');
+    await image
+      .rotate()
+      .resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#000000' })
+      .jpeg({ quality: 88 })
+      .toFile(tmp);
+    await fsp.rename(tmp, target);
+  } catch (err) {
+    await fsp.rm(tmp, { force: true }).catch(() => {});
+    if (err instanceof BadImageError) throw err;
+    throw new BadImageError('That file could not be read as an image');
+  }
+}
+
 /** The only widths ever made, so the cache holds a few sizes per image at most. */
 export const ALLOWED_WIDTHS = [160, 240, 320, 480, 640, 960, 1280, 1920];
 

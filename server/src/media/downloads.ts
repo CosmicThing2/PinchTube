@@ -142,6 +142,15 @@ export async function requestDownload(source: TranscodeSource, rendition: Rendit
   return statusOf(task);
 }
 
+/**
+ * Deletes a finished copy once the browser has saved it, for downloads of many
+ * videos, whose copies would otherwise fill the disk until the daily clear-out.
+ */
+export async function releaseCopy(source: TranscodeSource, rendition: Rendition): Promise<void> {
+  if (tasks.has(`${source.id}/${rendition.id}`)) return;
+  await fsp.rm(fileFor(source.id, rendition), { force: true });
+}
+
 /** Where a copy stands, or null if nobody has asked for it. */
 export async function downloadStatus(source: TranscodeSource, rendition: Rendition): Promise<DownloadStatus | null> {
   const task = tasks.get(`${source.id}/${rendition.id}`);

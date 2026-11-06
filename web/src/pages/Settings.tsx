@@ -8,7 +8,7 @@
  *   Playback      default qualities, autoplay, SponsorBlock, gestures, subtitles...
  *   Transcoding   hardware encoding, quality preset, cache            (admin)
  *   Interface     theme, colours, card size, layout, browsing defaults,
- *                 downloads by channel
+ *                 how downloads are listed and when they are deleted
  *   Password      change your own password
  *   Two-factor    sign-in codes from an app (components/TwoFactorPanel.tsx)
  *   Users         accounts and their access    (admin; components/UsersPanel.tsx)
@@ -1252,6 +1252,22 @@ export function Settings() {
             onChange={(value) =>
               update((current) => {
                 current.ui.downloadsByChannel = value;
+                return current;
+              })
+            }
+          />
+        </Row>
+
+        <Row
+          label="Delete downloads once watched"
+          hint="Removes a video from the browser cache after it is marked as watched, once you leave its page. Anything watched before you turn this on, or before it was downloaded, is kept."
+        >
+          <Toggle
+            checked={draft.ui.autoDeleteWatchedDownloads === true}
+            onChange={(value) =>
+              update((current) => {
+                current.ui.autoDeleteWatchedDownloads = value;
+                if (value) current.ui.autoDeleteSince = Date.now();
                 return current;
               })
             }

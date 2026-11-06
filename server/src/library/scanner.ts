@@ -27,6 +27,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { db } from '../db.js';
 import { getSettings } from '../settings.js';
+import { channelEdit, editedArt } from '../lib/channel-edits.js';
 import { readChannelNfo, readVideoNfo } from './nfo.js';
 import { probe } from './ffprobe.js';
 import { chaptersFromDescription, chaptersFromProbe, isYoutubeId, youtubeIdFromName } from './chapters.js';
@@ -326,6 +327,12 @@ async function scanChannel(root: string, folder: string, startedAt: number, full
   const channelPath = path.join(root, folder);
   const channelId = idFor('channel', folder);
 
+  await recordChannel(channelPath, folder, channelId, startedAt);
+  await scanDirectory(root, channelPath, channelId, startedAt, full, 0);
+}
+
+/** Records a channel from its folder, with any edits made in the app (lib/channel-edits.ts) on top. */
+async function recordChannel(channelPath: string, folder: string, channelId: string, seenAt: number): Promise<void> {
   const nfoPath = path.join(channelPath, 'tvshow.nfo');
   let nfoMtime: number | null = null;
   let nfo = null as ReturnType<typeof readChannelNfo>;
@@ -344,20 +351,28 @@ async function scanChannel(root: string, folder: string, startedAt: number, full
     findImage(channelPath, ['fanart', 'backdrop']),
   ]);
 
+  const edit = channelEdit(channelId);
+
   upsertChannel.run({
     id: channelId,
     folder,
     path: channelPath,
-    title: (nfo && nfo.title) || prettifyName(folder),
-    plot: (nfo && nfo.plot) || null,
-    poster,
-    banner,
-    fanart,
+    title: edit.title ?? ((nfo && nfo.title) || prettifyName(folder)),
+    plot: edit.plot !== null ? edit.plot || null : (nfo && nfo.plot) || null,
+    poster: editedArt(channelId, 'poster') ?? poster,
+    banner: editedArt(channelId, 'banner') ?? banner,
+    fanart: editedArt(channelId, 'fanart') ?? fanart,
     nfo_mtime: nfoMtime,
-    last_seen: startedAt,
+    last_seen: seenAt,
   });
+}
 
-  await scanDirectory(root, channelPath, channelId, startedAt, full, 0);
+/** Records a channel again straight away, after it has been edited. */
+export async function refreshChannel(channelId: string): Promise<void> {
+  const row = db.prepare('SELECT folder, path, last_seen FROM channels WHERE id = ?').get(channelId) as
+    | { folder: string; path: string; last_seen: number }
+    | undefined;
+  if (row) await recordChannel(row.path, row.folder, channelId, row.last_seen);
 }
 
 /**

@@ -95,7 +95,7 @@ export function ChannelCard({
   to = `/channel/${channel.id}`,
   detail,
 }: {
-  channel: Pick<ChannelDto, 'id' | 'title' | 'videoCount' | 'unwatchedCount'>;
+  channel: Pick<ChannelDto, 'id' | 'title' | 'videoCount' | 'unwatchedCount'> & { artVersion?: number };
   /** Where it leads; the channel's own page unless given. */
   to?: string;
   /** Shown in place of the video count. */
@@ -105,7 +105,7 @@ export function ChannelCard({
     <Link className="channel-card" to={to}>
       <img
         className="avatar-lg"
-        src={urls.channelArt(channel.id, 'poster', 240)}
+        src={urls.channelArt(channel.id, 'poster', 240, channel.artVersion)}
         alt=""
         loading="lazy"
         onError={(event) => {

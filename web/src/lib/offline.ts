@@ -12,8 +12,12 @@
  *
  * For any quality other than Original, the server first converts the whole
  * video (server/src/routes/downloads.ts); the progress of that "preparing"
- * step is followed here too. Downloads carry on while moving around the app,
- * and anything can follow them with useDownloadTask() / useOfflineVersion().
+ * step is followed here too. Downloads run one at a time, oldest request first
+ * (a single download goes ahead of a "Download all" still working through its
+ * list), and carry on while moving around the app; anything can follow them
+ * with useDownloadTask() / useOfflineVersion(). useIsSaved() says whether a
+ * video is stored, for the badge on its thumbnail, and
+ * removeWatchedDownloads() is the "delete downloads once watched" setting.
  *
  * Each stored video is tagged with the account that saved it, and only that
  * account sees or plays it, so a shared device does not leak one person's
@@ -59,8 +63,11 @@ export interface DownloadTask {
   videoId: string;
   title: string;
   mode: 'device' | 'file';
-  /** 'saving' is joining the downloaded pieces into one stored file. */
-  phase: 'preparing' | 'downloading' | 'saving' | 'failed';
+  /**
+   * 'waiting' is queued behind another download; 'saving' is joining the
+   * downloaded pieces into one stored file.
+   */
+  phase: 'waiting' | 'preparing' | 'downloading' | 'saving' | 'failed';
   /** 0 to 1 within the current phase. */
   progress: number;
   error: string | null;
@@ -77,6 +84,8 @@ export interface DownloadRequest {
   quality: string;
   qualityLabel: string;
   mode: 'device' | 'file';
+  /** Delete the server's converted copy once saved; set when downloading many at once. */
+  release?: boolean;
 }
 
 const DB_NAME = 'pinchtube-offline';
@@ -186,6 +195,29 @@ export async function removeAllOffline(userId: number): Promise<void> {
     }
   });
   changed();
+}
+
+/**
+ * For the "delete downloads once watched" setting: removes every saved video
+ * marked watched after it was saved and after the setting was turned on.
+ * `keepVideoId` is the video open right now, which must not vanish mid-play.
+ */
+export async function removeWatchedDownloads(
+  userId: number,
+  since: number,
+  keepVideoId: string | null,
+): Promise<void> {
+  const videos = await listOffline(userId);
+  if (!videos.length) return;
+  const { items } = await api.post<{ items: Record<string, number> }>('/api/videos/watched-times', {
+    ids: videos.map((video) => video.videoId),
+  });
+  for (const video of videos) {
+    const watchedAt = items[video.videoId];
+    if (watchedAt && watchedAt > Math.max(video.savedAt, since) && video.videoId !== keepVideoId) {
+      await removeOffline(userId, video.videoId);
+    }
+  }
 }
 
 /** The ways the Downloads page can be sorted, in menu order. */
@@ -375,6 +407,49 @@ export function useDownloadTasks(): DownloadTask[] {
   return Array.from(tasks.values());
 }
 
+/** How a download is getting on, in words. */
+export function taskLabel(task: DownloadTask): string {
+  const percent = `${Math.round(task.progress * 100)}%`;
+  switch (task.phase) {
+    case 'waiting':
+      return 'Waiting for other downloads';
+    case 'preparing':
+      return `Preparing on the server · ${percent}`;
+    case 'saving':
+      return 'Saving to the browser cache';
+    default:
+      return `Downloading · ${percent}`;
+  }
+}
+
+// One list of saved video ids for the whole page, however many thumbnails ask.
+const SAVED_EVENT = 'ytm-offline-saved-ids';
+let savedFor: number | null = null;
+let savedIds: ReadonlySet<string> = new Set();
+
+async function loadSavedIds(userId: number): Promise<void> {
+  const videos = await listOffline(userId).catch(() => []);
+  if (savedFor !== userId) return;
+  savedIds = new Set(videos.map((video) => video.videoId));
+  window.dispatchEvent(new CustomEvent(SAVED_EVENT));
+}
+
+window.addEventListener(STORED_EVENT, () => {
+  if (savedFor !== null) void loadSavedIds(savedFor);
+});
+
+/** Whether this account has a video in the browser cache. */
+export function useIsSaved(userId: number | null, videoId: string): boolean {
+  useEventCount(SAVED_EVENT);
+  useEffect(() => {
+    if (userId === null || savedFor === userId) return;
+    savedFor = userId;
+    savedIds = new Set();
+    void loadSavedIds(userId);
+  }, [userId]);
+  return userId !== null && savedFor === userId && savedIds.has(videoId);
+}
+
 // ---- downloading ------------------------------------------------------------------
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -509,12 +584,12 @@ function saveAsFile(url: string): void {
   link.remove();
 }
 
-/**
- * Starts a download. Keeps running while moving around the app; follow it
- * with useDownloadTask(). Only one per video at a time.
- */
-export function startDownload(request: DownloadRequest): void {
-  if (controllers.has(request.videoId)) return;
+/** Downloads waiting their turn. */
+const waiting: DownloadRequest[] = [];
+let busy = false;
+
+/** Runs one download from start to finish, recording how it went. */
+async function runDownload(request: DownloadRequest): Promise<void> {
   const controller = new AbortController();
   controllers.set(request.videoId, controller);
   setTask(request.videoId, {
@@ -526,38 +601,87 @@ export function startDownload(request: DownloadRequest): void {
     error: null,
   });
 
-  void (async () => {
-    try {
-      if (request.quality !== 'original') await prepare(request, controller.signal);
-      if (request.mode === 'file') {
-        saveAsFile(fileUrl(request, true));
-      } else {
-        await store(request, fileUrl(request, false), controller.signal);
+  try {
+    if (request.quality !== 'original') await prepare(request, controller.signal);
+    if (request.mode === 'file') {
+      saveAsFile(fileUrl(request, true));
+    } else {
+      await store(request, fileUrl(request, false), controller.signal);
+      if (request.release && request.quality !== 'original') {
+        void api.del(`/api/videos/${request.videoId}/downloads/${request.quality}`).catch(() => {});
       }
-      setTask(request.videoId, null);
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        setTask(request.videoId, null);
-      } else {
-        const full = err?.name === 'QuotaExceededError';
-        setTask(request.videoId, {
-          videoId: request.videoId,
-          title: request.title,
-          mode: request.mode,
-          phase: 'failed',
-          progress: 0,
-          error: full ? 'There is not enough space on this device.' : (err?.message ?? 'The download failed'),
-        });
-      }
-    } finally {
-      controllers.delete(request.videoId);
     }
-  })();
+    setTask(request.videoId, null);
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      setTask(request.videoId, null);
+    } else if (err?.name === 'QuotaExceededError') {
+      // Everything else would only fail the same way, so stop here.
+      const message = 'There is not enough space on this device.';
+      for (const next of [request, ...waiting.splice(0)]) failTask(next, message);
+    } else {
+      failTask(request, err?.message ?? 'The download failed');
+    }
+  } finally {
+    controllers.delete(request.videoId);
+  }
 }
 
-/** Stops a download, or clears a failed one from view. */
+function failTask(request: DownloadRequest, error: string): void {
+  setTask(request.videoId, {
+    videoId: request.videoId,
+    title: request.title,
+    mode: request.mode,
+    phase: 'failed',
+    progress: 0,
+    error,
+  });
+}
+
+/** Starts the next waiting download, unless one is running. */
+function pump(): void {
+  if (busy) return;
+  const next = waiting.shift();
+  if (!next) return;
+  busy = true;
+  void runDownload(next).finally(() => {
+    busy = false;
+    pump();
+  });
+}
+
+/**
+ * Starts a download, or lines it up behind the one running. Keeps running
+ * while moving around the app; follow it with useDownloadTask(). Only one per
+ * video at a time. `atBack` is for downloading many at once; otherwise it goes
+ * next, since someone just asked for it.
+ */
+export function startDownload(request: DownloadRequest, { atBack = false } = {}): void {
+  const existing = tasks.get(request.videoId);
+  if (existing && existing.phase !== 'failed') return;
+  setTask(request.videoId, {
+    videoId: request.videoId,
+    title: request.title,
+    mode: request.mode,
+    phase: 'waiting',
+    progress: 0,
+    error: null,
+  });
+  if (atBack) waiting.push(request);
+  else waiting.unshift(request);
+  pump();
+}
+
+/** Stops a download, takes it out of the line, or clears a failed one from view. */
 export function cancelDownload(videoId: string): void {
+  const place = waiting.findIndex((request) => request.videoId === videoId);
+  if (place >= 0) waiting.splice(place, 1);
   const controller = controllers.get(videoId);
   if (controller) controller.abort();
   else setTask(videoId, null);
+}
+
+/** Stops everything and clears the list. */
+export function cancelAllDownloads(): void {
+  for (const videoId of Array.from(tasks.keys())) cancelDownload(videoId);
 }

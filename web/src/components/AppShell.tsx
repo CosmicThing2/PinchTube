@@ -8,13 +8,15 @@
  *   - the side menu on a wide screen (a slide-out drawer in theater mode)
  *   - the bottom tab bar on a phone
  * Also applies layout-wide classes, such as the card size setting and
- * theater mode on the watch page, which styles/app.css responds to.
+ * theater mode on the watch page, which styles/app.css responds to, and runs
+ * the "delete downloads once watched" setting, since it is not tied to a page.
  */
 
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../lib/app-context';
 import { useQueue } from '../lib/queue-context';
+import { removeWatchedDownloads } from '../lib/offline';
 import {
   IconChannels,
   IconClose,
@@ -69,12 +71,44 @@ const TABS = [
   { to: '/settings', label: 'Settings', Icon: IconSettings, match: (p: string) => p.startsWith('/settings') },
 ];
 
+/** How long after leaving a video to check, so its last progress save has landed. */
+const WATCHED_CHECK_DELAY_MS = 2000;
+
+/**
+ * The "delete downloads once watched" setting: checks when the app opens and
+ * each time a video is left, never touching the video open right now.
+ */
+function useDeleteWatchedDownloads(pathname: string): void {
+  const { user, settings } = useApp();
+  const userId = user?.id ?? null;
+  const enabled = settings?.ui.autoDeleteWatchedDownloads === true;
+  const since = settings?.ui.autoDeleteSince ?? 0;
+  const watching = pathname.startsWith('/watch/') ? pathname.split('/')[2] : null;
+  const previous = useRef<string | null>(null);
+  const checkedOnOpen = useRef(false);
+
+  useEffect(() => {
+    const left = previous.current;
+    previous.current = watching;
+    if (!enabled || userId === null) return;
+    const opening = !checkedOnOpen.current;
+    checkedOnOpen.current = true;
+    if (!opening && (!left || left === watching)) return;
+
+    const timer = window.setTimeout(() => {
+      void removeWatchedDownloads(userId, since, watching).catch(() => {});
+    }, WATCHED_CHECK_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [watching, enabled, since, userId]);
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { theme, setTheme, logout, theater, settings, dataSaver, setDataSaver } = useApp();
   const { count: queueCount, queueMode, setQueueMode } = useQueue();
   const navigate = useNavigate();
   const location = useLocation();
   const [params] = useSearchParams();
+  useDeleteWatchedDownloads(location.pathname);
   const [query, setQuery] = useState('');
   const [navOpen, setNavOpen] = useState(false);
   /**

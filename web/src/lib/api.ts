@@ -65,6 +65,9 @@ export const api = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
   /** A small POST that still completes if the page is closing, e.g. the last playback position. */
+  /** Sends a file as the request body, such as an image upload. */
+  putFile: <T>(path: string, file: Blob) =>
+    request<T>(path, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } }),
   postKeepalive: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body), keepalive: true }),
   put: <T>(path: string, body?: unknown) =>
@@ -161,6 +164,17 @@ export interface ChannelDto {
   hasPoster: boolean;
   hasBanner: boolean;
   hasFanart: boolean;
+  /** Changes when an uploaded image does; pass it to urls.channelArt. */
+  artVersion: number;
+}
+
+/** Which parts of a channel an administrator has edited. */
+export interface ChannelEdits {
+  title: boolean;
+  plot: boolean;
+  poster: boolean;
+  banner: boolean;
+  fanart: boolean;
 }
 
 /** One row of the home page. */
@@ -274,7 +288,14 @@ export interface AppSettings {
     cacheSizeGb: number;
     maxConcurrentJobs: number;
   };
-  ui: { defaultSort: string; hideWatched: boolean; pageSize: number; downloadsByChannel: boolean };
+  ui: {
+    defaultSort: string;
+    hideWatched: boolean;
+    pageSize: number;
+    downloadsByChannel: boolean;
+    autoDeleteWatchedDownloads: boolean;
+    autoDeleteSince: number;
+  };
 }
 
 export type CodecKey = 'h264' | 'vp9' | 'av1' | 'hevc' | 'other';
@@ -311,6 +332,14 @@ export interface DownloadStatus {
 }
 
 /** Progress of a library scan. */
+/** What one video in a "Download all" would be saved at. */
+export interface DownloadPlanItem {
+  id: string;
+  quality: string;
+  label: string;
+  bytes: number | null;
+}
+
 export interface ScanStatus {
   running: boolean;
   full: boolean;
@@ -349,8 +378,8 @@ export interface SystemInfo {
 /** Addresses used directly by images, the video player and subtitle tracks. */
 export const urls = {
   videoThumb: (id: string, width = 480) => `/api/images/video/${id}/thumb?w=${width}`,
-  channelArt: (id: string, kind: 'poster' | 'banner' | 'fanart', width = 320) =>
-    `/api/images/channel/${id}/${kind}?w=${width}`,
+  channelArt: (id: string, kind: 'poster' | 'banner' | 'fanart', width = 320, version = 0) =>
+    `/api/images/channel/${id}/${kind}?w=${width}&v=${version}`,
   original: (id: string) => `/api/stream/${id}/original`,
   hlsMaster: (id: string) => `/api/stream/${id}/master.m3u8`,
   hlsVariant: (id: string, rendition: string) => `/api/stream/${id}/${rendition}/index.m3u8`,

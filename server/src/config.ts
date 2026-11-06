@@ -47,11 +47,20 @@ export const paths = {
   imageCache: path.join(config.cacheDir, 'images'),
   /** Whole-file copies made for downloading (media/downloads.ts). */
   downloadCache: path.join(config.cacheDir, 'downloads'),
+  /** Images uploaded for channels (lib/channel-edits.ts). */
+  channelArt: path.join(config.dataDir, 'channel-art'),
 };
 
 /** Creates the config and cache folders on first start. */
 export function ensureDirs(): void {
-  for (const dir of [config.dataDir, config.cacheDir, paths.transcodeCache, paths.imageCache, paths.downloadCache]) {
+  for (const dir of [
+    config.dataDir,
+    config.cacheDir,
+    paths.transcodeCache,
+    paths.imageCache,
+    paths.downloadCache,
+    paths.channelArt,
+  ]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }

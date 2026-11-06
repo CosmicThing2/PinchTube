@@ -411,15 +411,19 @@ export interface ChannelDto {
   hasPoster: boolean;
   hasBanner: boolean;
   hasFanart: boolean;
+  /** Changes when an uploaded image does; part of the image's address, so browsers refetch it. */
+  artVersion: number;
 }
 
 /** Channels with their video counts, newest upload and this viewer's unwatched count. */
 const CHANNEL_SELECT = `
   SELECT c.id, c.title, c.plot, c.poster, c.banner, c.fanart,
+         COALESCE(e.art_version, 0) AS art_version,
          COUNT(v.id) AS video_count,
          MAX(v.aired) AS latest_aired,
          SUM(CASE WHEN COALESCE(p.watched, 0) = 0 THEN 1 ELSE 0 END) AS unwatched_count
     FROM channels c
+    LEFT JOIN channel_edits e ON e.channel_id = c.id
     LEFT JOIN videos v ON v.channel_id = c.id
     LEFT JOIN progress p ON p.video_id = v.id AND p.user_id = @viewerId
 `;
@@ -436,6 +440,7 @@ function mapChannel(row: any): ChannelDto {
     hasPoster: Boolean(row.poster),
     hasBanner: Boolean(row.banner),
     hasFanart: Boolean(row.fanart),
+    artVersion: Number(row.art_version) || 0,
   };
 }
 
@@ -480,23 +485,30 @@ export function channelArtwork(id: string, kind: 'poster' | 'banner' | 'fanart')
 export function saveProgress(userId: number, videoId: string, position: number, duration: number): void {
   const settings = settingsFor(userId);
   const watched = duration > 0 && position >= duration * settings.playback.watchedThreshold ? 1 : 0;
+  const now = Date.now();
   db.prepare(
-    `INSERT INTO progress (user_id, video_id, position, duration, watched, updated_at)
-     VALUES (@userId, @videoId, @position, @duration, @watched, @now)
+    `INSERT INTO progress (user_id, video_id, position, duration, watched, updated_at, watched_at)
+     VALUES (@userId, @videoId, @position, @duration, @watched, @now, @watchedAt)
      ON CONFLICT(user_id, video_id) DO UPDATE SET
        position = excluded.position,
        duration = excluded.duration,
+       watched_at = CASE WHEN progress.watched = 0 AND excluded.watched = 1 THEN excluded.updated_at
+                         ELSE progress.watched_at END,
        watched = MAX(progress.watched, excluded.watched),
        updated_at = excluded.updated_at`,
-  ).run({ userId, videoId, position, duration, watched, now: Date.now() });
+  ).run({ userId, videoId, position, duration, watched, now, watchedAt: watched ? now : null });
 }
 
 /** Marks a video watched or unwatched by hand, resetting the position to the start. */
 export function setWatched(userId: number, videoId: string, watched: boolean, duration: number | null): void {
+  const now = Date.now();
   db.prepare(
-    `INSERT INTO progress (user_id, video_id, position, duration, watched, updated_at)
-     VALUES (@userId, @videoId, @position, @duration, @watched, @now)
+    `INSERT INTO progress (user_id, video_id, position, duration, watched, updated_at, watched_at)
+     VALUES (@userId, @videoId, @position, @duration, @watched, @now, @watchedAt)
      ON CONFLICT(user_id, video_id) DO UPDATE SET
+       watched_at = CASE WHEN excluded.watched = 0 THEN NULL
+                         WHEN progress.watched = 0 THEN excluded.updated_at
+                         ELSE progress.watched_at END,
        watched = excluded.watched,
        position = excluded.position,
        updated_at = excluded.updated_at`,
@@ -506,8 +518,17 @@ export function setWatched(userId: number, videoId: string, watched: boolean, du
     position: 0,
     duration: duration ?? 0,
     watched: watched ? 1 : 0,
-    now: Date.now(),
+    now,
+    watchedAt: watched ? now : null,
   });
+}
+
+/** When each of a user's watched videos was marked watched, where that is known. */
+export function watchedTimes(userId: number): Map<string, number> {
+  const rows = db
+    .prepare('SELECT video_id, watched_at FROM progress WHERE user_id = ? AND watched = 1 AND watched_at IS NOT NULL')
+    .all(userId) as { video_id: string; watched_at: number }[];
+  return new Map(rows.map((row) => [row.video_id, row.watched_at]));
 }
 
 // ---------------------------------------------------------------- queue ----

@@ -783,6 +783,30 @@ button {
   fill: currentColor;
 }
 
+/* A video in the browser cache. Moves down while "Add" sits in the same corner. */
+.badge-downloaded {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.badge-downloaded svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.card.queueing .badge-downloaded {
+  top: 36px;
+}
+
 .progress-bar {
   position: absolute;
   left: 0;
@@ -973,6 +997,10 @@ button {
   align-items: flex-start;
 }
 
+.channel-hero-body .grow {
+  flex: 1;
+}
+
 .channel-hero-body .avatar-lg {
   width: 68px;
   height: 68px;
@@ -995,15 +1023,18 @@ button {
   margin-bottom: 6px;
 }
 
+.channel-plot {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .clamp-3 {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 13.5px;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 /* toolbar ------------------------------------------------------------------ */
@@ -1145,7 +1176,8 @@ textarea.input {
   filter: brightness(1.08);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn.is-disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -2943,6 +2975,89 @@ a.viz-row:focus-visible .viz-label {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 4px;
+}
+
+/* the channel edit dialog ---------------------------------------------------- */
+textarea.input.channel-edit-plot {
+  height: 140px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.channel-edit-art {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.channel-edit-art .grow {
+  flex: 1;
+  min-width: 140px;
+}
+
+.channel-edit-art .label {
+  font-weight: 650;
+  font-size: 14px;
+}
+
+.channel-edit-art .hint {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.channel-edit-preview {
+  width: 96px;
+  height: 54px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.channel-edit-preview.round {
+  width: 54px;
+  border-radius: 999px;
+}
+
+.channel-edit-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.channel-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 8px;
+  padding-bottom: 12px;
+}
+
+.channel-icon-choice {
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: #000;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+}
+
+.channel-icon-choice:hover:not(:disabled),
+.channel-icon-choice:focus-visible {
+  border-color: var(--accent);
+}
+
+.channel-icon-choice svg {
+  width: 62%;
+  height: 62%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* pager (previous / next page) */

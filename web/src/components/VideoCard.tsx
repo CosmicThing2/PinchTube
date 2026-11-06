@@ -15,9 +15,10 @@ import { Link } from 'react-router-dom';
 import type { VideoDto } from '../lib/api';
 import { urls } from '../lib/api';
 import { formatDuration, formatRelative } from '../lib/format';
-import { IconCheck, IconFilm } from './Icons';
+import { IconCheck, IconDownload, IconFilm } from './Icons';
 import { useQueue } from '../lib/queue-context';
 import { useApp } from '../lib/app-context';
+import { useIsSaved } from '../lib/offline';
 
 interface Props {
   video: VideoDto;
@@ -30,7 +31,8 @@ interface Props {
 /** A video's thumbnail, faded if watched (when that setting is on), with its badges. */
 export function Thumb({ video, width = 480 }: { video: VideoDto; width?: number }) {
   const [failed, setFailed] = useState(false);
-  const { settings } = useApp();
+  const { settings, user } = useApp();
+  const saved = useIsSaved(user?.id ?? null, video.id);
   const dimmed = video.progress.watched && settings?.appearance.dimWatched !== false;
   const percent =
     video.duration && video.progress.position > 0
@@ -64,12 +66,23 @@ export function Thumb({ video, width = 480 }: { video: VideoDto; width?: number 
         </span>
       ) : null}
 
+      {saved ? <DownloadedBadge /> : null}
+
       {percent > 0 && !video.progress.watched ? (
         <div className="progress-bar">
           <span style={{ width: `${percent}%` }} />
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** The mark in the corner of a thumbnail showing a video is in the browser cache. */
+export function DownloadedBadge() {
+  return (
+    <span className="badge-downloaded" title="Saved to the browser cache" aria-label="Downloaded" role="img">
+      <IconDownload />
+    </span>
   );
 }
 

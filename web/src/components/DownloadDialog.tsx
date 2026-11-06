@@ -15,7 +15,14 @@
 import { useState } from 'react';
 import type { WatchPayload } from '../lib/api';
 import { formatBytes } from '../lib/format';
-import { cancelDownload, removeOffline, startDownload, useDownloadTask, type OfflineVideo } from '../lib/offline';
+import {
+  cancelDownload,
+  removeOffline,
+  startDownload,
+  taskLabel,
+  useDownloadTask,
+  type OfflineVideo,
+} from '../lib/offline';
 import { Dialog, Select } from './Common';
 import { IconCheck, IconDownload, IconTrash } from './Icons';
 
@@ -106,11 +113,7 @@ export function DownloadDialog({
             <span>{task.error}</span>
           ) : (
             <>
-              <div className="download-task-text">
-                {task.phase === 'saving'
-                  ? 'Saving to the browser cache…'
-                  : `${task.phase === 'preparing' ? 'Preparing on the server' : 'Downloading'}… ${Math.round(task.progress * 100)}%`}
-              </div>
+              <div className="download-task-text">{taskLabel(task)}</div>
               <div className="download-bar">
                 <span style={{ width: `${Math.round(task.progress * 100)}%` }} />
               </div>

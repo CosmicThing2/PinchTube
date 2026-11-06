@@ -31,6 +31,7 @@ import { registerStreamRoutes } from './routes/stream.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerQueueRoutes } from './routes/queue.js';
 import { registerDownloadRoutes } from './routes/downloads.js';
+import { registerChannelRoutes } from './routes/channels.js';
 import { applyLibrarySettings, setLibraryLogger, shutdownLibrary, triggerScan } from './library/manager.js';
 import { needsFullRescan } from './library/scanner.js';
 import { detectHardware, hardwareStatus } from './media/hwaccel.js';
@@ -160,6 +161,7 @@ async function main(): Promise<void> {
   registerSettingsRoutes(app);
   registerQueueRoutes(app);
   registerDownloadRoutes(app);
+  registerChannelRoutes(app);
 
   // ---- the web app ---------------------------------------------------------
   // The built React app (web/dist, copied to ./public in the image).

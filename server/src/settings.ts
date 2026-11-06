@@ -154,6 +154,10 @@ export interface AppSettings {
     pageSize: number;
     /** Show the Downloads page as a grid of channels rather than one list. */
     downloadsByChannel: boolean;
+    /** Remove a video from the browser cache once it is marked watched. */
+    autoDeleteWatchedDownloads: boolean;
+    /** When that was turned on (ms): anything watched before then is left alone. */
+    autoDeleteSince: number;
   };
 }
 
@@ -219,6 +223,8 @@ export const defaultSettings: AppSettings = {
     hideWatched: false,
     pageSize: 48,
     downloadsByChannel: false,
+    autoDeleteWatchedDownloads: false,
+    autoDeleteSince: 0,
   },
 };
 
@@ -417,6 +423,8 @@ function clampSettings(s: AppSettings): void {
   s.transcode.maxConcurrentJobs = clampInt(s.transcode.maxConcurrentJobs, 1, 10, 3);
   s.ui.pageSize = clampInt(s.ui.pageSize, 12, 200, 48);
   s.ui.downloadsByChannel = s.ui.downloadsByChannel === true;
+  s.ui.autoDeleteWatchedDownloads = s.ui.autoDeleteWatchedDownloads === true;
+  s.ui.autoDeleteSince = Math.max(0, Number(s.ui.autoDeleteSince) || 0);
   if (!['system', 'dark', 'light'].includes(s.appearance.theme)) s.appearance.theme = 'system';
 
   const size = s.appearance.cardSize as string;
